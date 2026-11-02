@@ -57,7 +57,7 @@ object RoadMatcher {
   for(road in roads) {
    val highway=road.tags.optString("highway")
    if(highway !in setOf("motorway","motorway_link","trunk","trunk_link","primary","primary_link","secondary","secondary_link","tertiary","tertiary_link","residential","unclassified","living_street","service")) continue
-   val max=limit(road.tags)?:continue
+   val speedLimit=limit(road.tags)?:continue
    var best=Double.MAX_VALUE
    var bearing=0.0
    for(i in 0 until road.nodes.size-1) {
@@ -86,7 +86,7 @@ object RoadMatcher {
     else -> null
    }
    val special=highway=="living_street" || road.tags.optString("zone:maxspeed").contains("zone30",true)
-   val match=Match(road.id,max,type,special,best)
+   val match=Match(road.id,speedLimit,type,special,best)
    candidates.add(match to (best+headingPenalty-if(road.id==previousId) 4.0 else 0.0))
   }
   val sorted=candidates.sortedBy { it.second }
