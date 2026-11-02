@@ -6,15 +6,28 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 
 class MainActivity : Activity() {
+ private val handler=Handler(Looper.getMainLooper())
+ private lateinit var diagnostics:TextView
+ private val refresh=object:Runnable { override fun run() { if(::diagnostics.isInitialized) showDiagnostics();handler.postDelayed(this,2000L) } }
+ override fun onResume() { super.onResume();handler.post(refresh) }
+ override fun onPause() {handler.removeCallbacks(refresh);super.onPause()}
+ private fun showDiagnostics() {
+  val p=getSharedPreferences("diagnostics",MODE_PRIVATE)
+  val updated=p.getLong("updated",0L)
+  val age=if(updated==0L) "nog geen GPS-fix" else "${(System.currentTimeMillis()-updated)/1000} s geleden"
+  diagnostics.text="Diagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}".replace("\\n","\n")
+ }
  override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState)
   val layout = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(40,60,40,30) }
-  layout.addView(TextView(this).apply { text="EuroRaptor — prototype\n\nGroen: € 0. Onbekende limiet: € —.\n\nBoetetarieven zijn nog niet aangesloten: de app toont daarom nog geen boetebedragen."; textSize=19f })
+  layout.addView(TextView(this).apply { text="EuroRaptor v0.5 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
   layout.addView(Button(this).apply { text="1. Toestemmingen"; setOnClickListener {
    if (!Settings.canDrawOverlays(this@MainActivity)) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
    requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, *if(Build.VERSION.SDK_INT>=33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray()),1)
@@ -24,6 +37,9 @@ class MainActivity : Activity() {
    startForegroundService(Intent(this@MainActivity,DrivingService::class.java))
   } })
   layout.addView(Button(this).apply { text="Stop overlay"; setOnClickListener { stopService(Intent(this@MainActivity,DrivingService::class.java)) } })
+  diagnostics=TextView(this).apply {textSize=15f;setPadding(0,25,0,0)}
+  layout.addView(diagnostics)
   setContentView(layout)
+  showDiagnostics()
  }
 }
