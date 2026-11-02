@@ -25,6 +25,10 @@ class DrivingService : Service(), LocationListener {
  private var roadType:FineCalculator.RoadType?=null
  private var specialZone=false
  private var lastQuery=0L
+ private var roads:List<RoadMatcher.Road> = emptyList()
+ private var roadsLoadedAt=0L
+ private var previousRoad:Long?=null
+ private var fetching=false
  private var lastLat=0.0
  private var lastLon=0.0
  private var speed:Double?=null
@@ -45,40 +49,54 @@ class DrivingService : Service(), LocationListener {
   lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000L,0f,this)
  }
  override fun onLocationChanged(location:Location) {
-  speed=if(location.hasSpeed() && location.accuracy<=25f) location.speed*3.6 else null
-  update()
   val now=System.currentTimeMillis()
-  if(now-lastQuery>20000 && (lastQuery==0L || distance(location.latitude,location.longitude,lastLat,lastLon)>100)) {
-   lastQuery=now;lastLat=location.latitude;lastLon=location.longitude
+  speed=if(location.hasSpeed() && location.hasAccuracy() && location.accuracy<=25f) location.speed*3.6 else null
+  val withinCache=roadsLoadedAt>0 && now-roadsLoadedAt<180000 &&
+   distance(location.latitude,location.longitude,lastLat,lastLon)<500
+  val match=if(withinCache) RoadMatcher.choose(roads,location,previousRoad) else null
+  limit=match?.limit
+  roadType=match?.type
+  specialZone=match?.special?:false
+  if(match!=null) previousRoad=match.id else previousRoad=null
+  update()
+  // Shared Overpass instances are unsuitable for continuous high-frequency tracking.
+  // Keep requests deliberately sparse; unknown is safer than an outdated limit.
+  if(!fetching && now-lastQuery>90000L && (roadsLoadedAt==0L ||
+    distance(location.latitude,location.longitude,lastLat,lastLon)>350 ||
+    now-roadsLoadedAt>180000L)) {
+   fetching=true
+   lastQuery=now
    val lat=location.latitude;val lon=location.longitude
-   executor.execute { val result=fetchLimit(lat,lon);handler.post { limit=result?.first;roadType=result?.second;specialZone=result?.third?:false;update() } }
-  }
- }
- private fun distance(a:Double,b:Double,c:Double,d:Double):Double { val x=(a-c)*111000;val y=(b-d)*111000*cos(Math.toRadians(a));return hypot(x,y) }
- private fun fetchLimit(lat:Double,lon:Double):Triple<Int,FineCalculator.RoadType?,Boolean>? { return try {
-  // Conservative: accept only an unambiguous maxspeed from exactly one nearby mapped road.
-  val q="[out:json][timeout:8];way(around:15,$lat,$lon)[highway][maxspeed];out tags;"
-  val url=URL("https://overpass.kumi.systems/api/interpreter?data="+java.net.URLEncoder.encode(q,"UTF-8"))
-  val conn=url.openConnection() as HttpURLConnection;conn.connectTimeout=8000;conn.readTimeout=8000
-  val root=JSONObject(conn.inputStream.bufferedReader().use { it.readText() });conn.disconnect()
-  val arr=root.getJSONArray("elements")
-  if(arr.length()!=1) null else {
-   val tags=arr.getJSONObject(0).getJSONObject("tags")
-   if(tags.has("maxspeed:conditional") || tags.has("maxspeed:variable")) null else {
-    val max=tags.optString("maxspeed").toIntOrNull()
-    val highway=tags.optString("highway")
-    val source=tags.optString("source:maxspeed")+" "+tags.optString("zone:maxspeed")
-    val kind=when {
-     highway=="motorway" || highway=="motorway_link" -> FineCalculator.RoadType.MOTORWAY
-     source.contains("NL:urban",true) -> FineCalculator.RoadType.URBAN
-     source.contains("NL:rural",true) -> FineCalculator.RoadType.RURAL
-     else -> null
+   executor.execute {
+    val fresh=fetchRoads(lat,lon)
+    handler.post {
+     if(fresh!=null) {
+      roads=fresh;lastLat=lat;lastLon=lon;roadsLoadedAt=System.currentTimeMillis()
+     }
+     fetching=false
     }
-    val special=tags.optString("zone:maxspeed").contains("30") || highway=="living_street"
-    if(max==null || max !in 5..130) null else Triple(max,kind,special)
    }
   }
- } catch(e:Exception){null} }
+ }
+ private fun distance(a:Double,b:Double,c:Double,d:Double):Double {
+  val x=(a-c)*111000;val y=(b-d)*111000*cos(Math.toRadians(a));return hypot(x,y)
+ }
+ private fun fetchRoads(lat:Double,lon:Double):List<RoadMatcher.Road>? {
+  return try {
+   val q="[out:json][timeout:15];way(around:650,$lat,$lon)[highway][maxspeed];out geom;"
+   val url=URL("https://overpass-api.de/api/interpreter")
+   val conn=url.openConnection() as HttpURLConnection
+   conn.requestMethod="POST"
+   conn.doOutput=true
+   conn.connectTimeout=15000;conn.readTimeout=20000
+   conn.setRequestProperty("User-Agent","EuroRaptor/0.4 (personal experimental road matching)")
+   conn.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=UTF-8")
+   conn.outputStream.use { it.write(("data="+java.net.URLEncoder.encode(q,"UTF-8")).toByteArray(Charsets.UTF_8)) }
+   val data=conn.inputStream.bufferedReader().use { it.readText() }
+   conn.disconnect()
+   RoadMatcher.parse(data)
+  } catch(e:Exception){null}
+ }
  private fun update() {
   val result=speed?.let { FineCalculator.calculate(it,limit,roadType,specialZone) } ?: FineCalculator.Result.Unknown
   when(result) {
