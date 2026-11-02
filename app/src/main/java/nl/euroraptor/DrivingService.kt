@@ -31,6 +31,9 @@ class DrivingService : Service(), LocationListener {
  private var fetching=false
  private var lastLat=0.0
  private var lastLon=0.0
+ private var cacheRadius=650.0
+ private var lastStatus="Wachten op GPS"
+ private var lastNetwork="Nog geen kaartaanvraag"
  private var speed:Double?=null
  override fun onBind(intent:Intent?)=null
  @SuppressLint("MissingPermission") override fun onCreate() { super.onCreate()
@@ -51,28 +54,37 @@ class DrivingService : Service(), LocationListener {
  override fun onLocationChanged(location:Location) {
   val now=System.currentTimeMillis()
   speed=if(location.hasSpeed() && location.hasAccuracy() && location.accuracy<=25f) location.speed*3.6 else null
-  val withinCache=roadsLoadedAt>0 && now-roadsLoadedAt<180000 &&
-   distance(location.latitude,location.longitude,lastLat,lastLon)<500
+  val cacheDistance=if(roadsLoadedAt>0) distance(location.latitude,location.longitude,lastLat,lastLon) else Double.MAX_VALUE
+  val withinCache=roadsLoadedAt>0 && now-roadsLoadedAt<180000 && cacheDistance<cacheRadius-100
   val match=if(withinCache) RoadMatcher.choose(roads,location,previousRoad) else null
   limit=match?.limit
   roadType=match?.type
   specialZone=match?.special?:false
   if(match!=null) previousRoad=match.id else previousRoad=null
+  lastStatus=when { speed==null -> "GPS onnauwkeurig of geen snelheid"; !withinCache -> "Buiten kaartcache"; match==null -> "Geen eenduidige wegmatch"; match.type==null -> "Wegtype onbekend"; else -> "Weg herkend" }
   update()
+  getSharedPreferences("diagnostics",MODE_PRIVATE).edit().putString("status",lastStatus).putString("network",lastNetwork)
+   .putString("speed",speed?.let { "%.1f km/u".format(java.util.Locale.US,it) }?:"onbekend")
+   .putString("limit",limit?.let { "$it km/u" }?:"onbekend")
+   .putString("road",match?.id?.toString()?:"geen")
+   .putString("accuracy",if(location.hasAccuracy()) "%.0f m".format(java.util.Locale.US,location.accuracy) else "onbekend")
+   .putString("cache",if(withinCache) "beschikbaar" else "niet beschikbaar")
+   .putLong("updated",now).apply()
   // Shared Overpass instances are unsuitable for continuous high-frequency tracking.
   // Keep requests deliberately sparse; unknown is safer than an outdated limit.
-  if(!fetching && now-lastQuery>90000L && (roadsLoadedAt==0L ||
-    distance(location.latitude,location.longitude,lastLat,lastLon)>350 ||
-    now-roadsLoadedAt>180000L)) {
+  if(!fetching && now-lastQuery>60000L && (roadsLoadedAt==0L ||
+    cacheDistance>cacheRadius-350 || now-roadsLoadedAt>150000L)) {
    fetching=true
    lastQuery=now
    val lat=location.latitude;val lon=location.longitude
+   val bearing=if(location.hasBearing() && location.hasSpeed() && location.speed>4f) location.bearing.toDouble() else null
    executor.execute {
-    val fresh=fetchRoads(lat,lon)
+    val fresh=fetchRoads(lat,lon,bearing)
     handler.post {
      if(fresh!=null) {
-      roads=fresh;lastLat=lat;lastLon=lon;roadsLoadedAt=System.currentTimeMillis()
-     }
+      roads=fresh;lastLat=lat;lastLon=lon;cacheRadius=if(bearing==null) 900.0 else 1100.0;roadsLoadedAt=System.currentTimeMillis()
+      lastNetwork="Kaart opgehaald: ${fresh.size} segmenten"
+     } else lastNetwork="Kaartaanvraag mislukt"
      fetching=false
     }
    }
@@ -81,15 +93,22 @@ class DrivingService : Service(), LocationListener {
  private fun distance(a:Double,b:Double,c:Double,d:Double):Double {
   val x=(a-c)*111000;val y=(b-d)*111000*cos(Math.toRadians(a));return hypot(x,y)
  }
- private fun fetchRoads(lat:Double,lon:Double):List<RoadMatcher.Road>? {
+ private fun fetchRoads(lat:Double,lon:Double,bearing:Double?):List<RoadMatcher.Road>? {
   return try {
-   val q="[out:json][timeout:15];way(around:650,$lat,$lon)[highway][maxspeed];out geom;"
+   // A circle ahead of travel reduces the blind area while keeping query volume bounded.
+   val ahead=if(bearing!=null) {
+    val rad=Math.toRadians(bearing)
+    val futureLat=lat+sin(rad)*550.0/111320.0
+    val futureLon=lon+cos(rad)*550.0/(111320.0*cos(Math.toRadians(lat)))
+    "way(around:700,$futureLat,$futureLon)[highway][maxspeed];"
+   } else ""
+   val q="[out:json][timeout:15];(way(around:650,$lat,$lon)[highway][maxspeed];$ahead);out geom;"
    val url=URL("https://overpass-api.de/api/interpreter")
    val conn=url.openConnection() as HttpURLConnection
    conn.requestMethod="POST"
    conn.doOutput=true
    conn.connectTimeout=15000;conn.readTimeout=20000
-   conn.setRequestProperty("User-Agent","EuroRaptor/0.4 (personal experimental road matching)")
+   conn.setRequestProperty("User-Agent","EuroRaptor/0.5 (personal experimental road matching)")
    conn.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=UTF-8")
    conn.outputStream.use { it.write(("data="+java.net.URLEncoder.encode(q,"UTF-8")).toByteArray(Charsets.UTF_8)) }
    val data=conn.inputStream.bufferedReader().use { it.readText() }
