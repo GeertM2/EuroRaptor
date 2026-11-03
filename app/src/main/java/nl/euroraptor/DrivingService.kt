@@ -108,7 +108,7 @@ class DrivingService : Service(), LocationListener {
    conn.requestMethod="POST"
    conn.doOutput=true
    conn.connectTimeout=15000;conn.readTimeout=20000
-   conn.setRequestProperty("User-Agent","EuroRaptor/0.5 (personal experimental road matching)")
+   conn.setRequestProperty("User-Agent","EuroRaptor/0.6 (personal experimental road matching)")
    conn.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=UTF-8")
    conn.outputStream.use { it.write(("data="+java.net.URLEncoder.encode(q,"UTF-8")).toByteArray(Charsets.UTF_8)) }
    val data=conn.inputStream.bufferedReader().use { it.readText() }
@@ -118,20 +118,23 @@ class DrivingService : Service(), LocationListener {
  }
  private fun update() {
   val result=speed?.let { FineCalculator.calculate(it,limit,roadType,specialZone) } ?: FineCalculator.Result.Unknown
-  when(result) {
-   is FineCalculator.Result.Amount -> {
-    overlay.text="€ ${result.euros}"
-    overlay.setBackgroundColor(if(result.euros==0) Color.rgb(0,110,40) else Color.rgb(160,35,25))
-   }
-   is FineCalculator.Result.Warning -> {
-    overlay.text=result.label
-    overlay.setBackgroundColor(Color.rgb(175,30,25))
-   }
-   FineCalculator.Result.Unknown -> {
-    overlay.text="€ —"
-    overlay.setBackgroundColor(Color.DKGRAY)
-   }
+  val amount=when(result) {
+   is FineCalculator.Result.Amount -> "€ ${result.euros}"
+   is FineCalculator.Result.Warning -> result.label
+   FineCalculator.Result.Unknown -> "€ —"
   }
+  val prefs=getSharedPreferences("display",MODE_PRIVATE)
+  val lines=mutableListOf(amount)
+  if(prefs.getBoolean("show_speed",false))
+   lines.add("GPS: "+(speed?.let { "${it.roundToInt()} km/u" } ?: "—"))
+  if(prefs.getBoolean("show_limit",false))
+   lines.add("Max: "+(limit?.let { "$it km/u" } ?: "—"))
+  overlay.text=lines.joinToString("\n")
+  overlay.setBackgroundColor(when(result) {
+   is FineCalculator.Result.Amount -> if(result.euros==0) Color.rgb(0,110,40) else Color.rgb(160,35,25)
+   is FineCalculator.Result.Warning -> Color.rgb(175,30,25)
+   FineCalculator.Result.Unknown -> Color.DKGRAY
+  })
  }
  override fun onDestroy() {lm.removeUpdates(this);wm.removeView(overlay);executor.shutdownNow();super.onDestroy()}
 }
