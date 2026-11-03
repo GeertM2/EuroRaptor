@@ -12,6 +12,9 @@ import android.widget.TextView
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 import java.util.concurrent.Executors
 import kotlin.math.*
 
@@ -34,6 +37,9 @@ class DrivingService : Service(), LocationListener {
  private var cacheRadius=650.0
  private var lastStatus="Wachten op GPS"
  private var lastNetwork="Nog geen kaartaanvraag"
+ private var lastRequestAt=0L
+ private var lastDuration=0L
+ private val server="overpass-api.de"
  private var speed:Double?=null
  override fun onBind(intent:Intent?)=null
  @SuppressLint("MissingPermission") override fun onCreate() { super.onCreate()
@@ -69,22 +75,30 @@ class DrivingService : Service(), LocationListener {
    .putString("road",match?.id?.toString()?:"geen")
    .putString("accuracy",if(location.hasAccuracy()) "%.0f m".format(java.util.Locale.US,location.accuracy) else "onbekend")
    .putString("cache",if(withinCache) "beschikbaar" else "niet beschikbaar")
-   .putLong("updated",now).apply()
+   .putLong("updated",now).putLong("request_at",lastRequestAt).putLong("request_duration",lastDuration)
+   .putString("server",server).apply()
   // Shared Overpass instances are unsuitable for continuous high-frequency tracking.
   // Keep requests deliberately sparse; unknown is safer than an outdated limit.
   if(!fetching && now-lastQuery>60000L && (roadsLoadedAt==0L ||
     cacheDistance>cacheRadius-350 || now-roadsLoadedAt>150000L)) {
    fetching=true
    lastQuery=now
+   lastRequestAt=now
+   lastNetwork="Kaartaanvraag bezig"
    val lat=location.latitude;val lon=location.longitude
    val bearing=if(location.hasBearing() && location.hasSpeed() && location.speed>4f) location.bearing.toDouble() else null
    executor.execute {
-    val fresh=fetchRoads(lat,lon,bearing)
+    val started=System.currentTimeMillis()
+    val result=fetchRoads(lat,lon,bearing)
     handler.post {
-     if(fresh!=null) {
-      roads=fresh;lastLat=lat;lastLon=lon;cacheRadius=if(bearing==null) 900.0 else 1100.0;roadsLoadedAt=System.currentTimeMillis()
-      lastNetwork="Kaart opgehaald: ${fresh.size} segmenten"
-     } else lastNetwork="Kaartaanvraag mislukt"
+     lastDuration=System.currentTimeMillis()-started
+     when(result) {
+      is FetchResult.Success -> {
+       roads=result.roads;lastLat=lat;lastLon=lon;cacheRadius=if(bearing==null) 900.0 else 1100.0;roadsLoadedAt=System.currentTimeMillis()
+       lastNetwork=if(result.roads.isEmpty()) "Geen wegen gevonden" else "Kaart ontvangen: ${result.roads.size} wegen"
+      }
+      is FetchResult.Error -> lastNetwork=result.message
+     }
      fetching=false
     }
    }
@@ -93,9 +107,13 @@ class DrivingService : Service(), LocationListener {
  private fun distance(a:Double,b:Double,c:Double,d:Double):Double {
   val x=(a-c)*111000;val y=(b-d)*111000*cos(Math.toRadians(a));return hypot(x,y)
  }
- private fun fetchRoads(lat:Double,lon:Double,bearing:Double?):List<RoadMatcher.Road>? {
+ private sealed class FetchResult {
+  data class Success(val roads:List<RoadMatcher.Road>):FetchResult()
+  data class Error(val message:String):FetchResult()
+ }
+ private fun fetchRoads(lat:Double,lon:Double,bearing:Double?):FetchResult {
+  var conn:HttpURLConnection?=null
   return try {
-   // A circle ahead of travel reduces the blind area while keeping query volume bounded.
    val ahead=if(bearing!=null) {
     val rad=Math.toRadians(bearing)
     val futureLat=lat+sin(rad)*550.0/111320.0
@@ -103,18 +121,28 @@ class DrivingService : Service(), LocationListener {
     "way(around:700,$futureLat,$futureLon)[highway][maxspeed];"
    } else ""
    val q="[out:json][timeout:15];(way(around:650,$lat,$lon)[highway][maxspeed];$ahead);out geom;"
-   val url=URL("https://overpass-api.de/api/interpreter")
-   val conn=url.openConnection() as HttpURLConnection
+   conn=URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
    conn.requestMethod="POST"
    conn.doOutput=true
-   conn.connectTimeout=15000;conn.readTimeout=20000
-   conn.setRequestProperty("User-Agent","EuroRaptor/0.6 (personal experimental road matching)")
+   conn.connectTimeout=15000
+   conn.readTimeout=20000
+   conn.setRequestProperty("User-Agent","EuroRaptor/0.7 (personal experimental road matching)")
    conn.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=UTF-8")
    conn.outputStream.use { it.write(("data="+java.net.URLEncoder.encode(q,"UTF-8")).toByteArray(Charsets.UTF_8)) }
-   val data=conn.inputStream.bufferedReader().use { it.readText() }
-   conn.disconnect()
-   RoadMatcher.parse(data)
-  } catch(e:Exception){null}
+   val code=conn.responseCode
+   if(code !in 200..299) {
+    val detail=try { conn.errorStream?.bufferedReader()?.use { it.readText().take(180).replace("\n"," ") } ?: "" } catch(_:Exception) { "" }
+    FetchResult.Error("HTTP $code"+if(detail.isNotBlank()) ": $detail" else "")
+   } else {
+    val data=conn.inputStream.bufferedReader().use { it.readText() }
+    try { FetchResult.Success(RoadMatcher.parse(data)) }
+    catch(e:Exception) { FetchResult.Error("Ongeldige kaartdata: ${e.javaClass.simpleName}: ${e.message?.take(100)}") }
+   }
+  } catch(e:SocketTimeoutException) { FetchResult.Error("Timeout: ${e.message?.take(90)}") }
+    catch(e:UnknownHostException) { FetchResult.Error("DNS-fout: ${e.message?.take(90)}") }
+    catch(e:SSLException) { FetchResult.Error("TLS-fout: ${e.message?.take(90)}") }
+    catch(e:Exception) { FetchResult.Error("${e.javaClass.simpleName}: ${e.message?.take(120)}") }
+  finally { conn?.disconnect() }
  }
  private fun update() {
   val result=speed?.let { FineCalculator.calculate(it,limit,roadType,specialZone) } ?: FineCalculator.Result.Unknown
