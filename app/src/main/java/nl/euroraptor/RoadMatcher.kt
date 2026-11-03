@@ -31,22 +31,40 @@ object RoadMatcher {
   return Pair(x,y)
  }
  private fun delta(a:Double,b:Double)=abs((a-b+540)%360-180)
+ /** Resolve explicit OSM time restrictions in Dutch local time.
+  * Unknown/complex restrictions fail closed rather than assuming 100 or 130.
+  */
  private fun limit(tags:JSONObject):Int? {
   if(tags.optString("maxspeed:variable") !in listOf("","no")) return null
   var result=tags.optString("maxspeed").toIntOrNull()
-  val conditional=tags.optString("maxspeed:conditional")
-  if(conditional.isNotBlank()) {
+  val conditional=tags.optString("maxspeed:conditional").trim()
+  if(conditional.isNotEmpty()) {
    val now=ZonedDateTime.now(ZoneId.of("Europe/Amsterdam"))
-   // Only simple daily time intervals; fail closed for unsupported conditions.
-   val pieces=conditional.split(";")
-   for(piece in pieces) {
-    val match=Regex("""^\s*(\d{1,3})\s*@\s*\(?\s*(\d\d:\d\d)\s*-\s*(\d\d:\d\d)\s*\)?\s*$""").matchEntire(piece)?:return null
-    val start=try { LocalTime.parse(match.groupValues[2]) } catch(e:Exception){return null}
-    val end=try { LocalTime.parse(match.groupValues[3]) } catch(e:Exception){return null}
-    val active=if(start<=end) now.toLocalTime()>=start && now.toLocalTime()<end
-               else now.toLocalTime()>=start || now.toLocalTime()<end
-    if(active) result=match.groupValues[1].toIntOrNull()
+   val days=listOf("Mo","Tu","We","Th","Fr","Sa","Su")
+   val dayIndex=now.dayOfWeek.value-1
+   val pattern=Regex("""^\s*(\d{1,3})\s*@\s*\(?\s*(?:(Mo|Tu|We|Th|Fr|Sa|Su)(?:-(Mo|Tu|We|Th|Fr|Sa|Su))?\s+)?(\d{1,2}:\d\d)\s*-\s*(\d{1,2}:\d\d)\s*\)?\s*$""")
+   var activeLimit:Int?=null
+   for(part in conditional.split(";")) {
+    val m=pattern.matchEntire(part)?:return null
+    val start=try { LocalTime.parse(m.groupValues[4].padStart(5,'0')) } catch(e:Exception){return null}
+    val end=try { LocalTime.parse(m.groupValues[5].padStart(5,'0')) } catch(e:Exception){return null}
+    val first=m.groupValues[2]
+    val last=m.groupValues[3].ifEmpty { first }
+    val dayAllowed=if(first.isEmpty()) true else {
+     val x=days.indexOf(first);val y=days.indexOf(last)
+     if(x<0 || y<0) return null
+     if(x<=y) dayIndex in x..y else dayIndex>=x || dayIndex<=y
+    }
+    val timeAllowed=if(start<=end) now.toLocalTime()>=start && now.toLocalTime()<end
+                    else now.toLocalTime()>=start || now.toLocalTime()<end
+    if(dayAllowed && timeAllowed) {
+     val value=m.groupValues[1].toIntOrNull()?:return null
+     if(activeLimit!=null && activeLimit!=value) return null
+     activeLimit=value
+    }
    }
+   if(activeLimit!=null) result=activeLimit
+   // An explicit default maxspeed is required outside conditional periods.
   }
   return result?.takeIf { it in 5..130 }
  }
