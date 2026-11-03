@@ -24,11 +24,14 @@ class MainActivity : Activity() {
   val p=getSharedPreferences("diagnostics",MODE_PRIVATE)
   val updated=p.getLong("updated",0L)
   val age=if(updated==0L) "nog geen GPS-fix" else "${(System.currentTimeMillis()-updated)/1000} s geleden"
-  diagnostics.text="Diagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}".replace("\\n","\n")
+  val request=p.getLong("request_at",0L)
+  val requestAge=if(request==0L) "nog nooit" else "${(System.currentTimeMillis()-request)/1000} s geleden"
+  val duration=p.getLong("request_duration",0L)
+  diagnostics.text="Diagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}\\nServer: ${p.getString("server","—")}\\nLaatste aanvraag: $requestAge | duur: $duration ms".replace("\\n","\n")
  }
  override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState)
   val layout = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(40,60,40,30) }
-  layout.addView(TextView(this).apply { text="EuroRaptor v0.6 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
+  layout.addView(TextView(this).apply { text="EuroRaptor v0.7 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
   val displaySettings=getSharedPreferences("display",MODE_PRIVATE)
   layout.addView(CheckBox(this).apply {
    text="Toon gemeten GPS-snelheid in overlay"
