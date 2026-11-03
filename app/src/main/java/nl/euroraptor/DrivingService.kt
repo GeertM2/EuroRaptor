@@ -50,8 +50,39 @@ class DrivingService : Service(), LocationListener {
   wm=getSystemService(WINDOW_SERVICE) as WindowManager
   overlay=TextView(this).apply { text="€ —"; textSize=30f; setTextColor(Color.WHITE); setBackgroundColor(Color.DKGRAY); setPadding(22,12,22,12) }
   val p=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT).apply { gravity=Gravity.TOP or Gravity.START; x=35; y=170 }
-  overlay.setOnTouchListener(object:View.OnTouchListener { var x=0;var y=0;var tx=0f;var ty=0f
-   override fun onTouch(v:View,event:android.view.MotionEvent):Boolean { when(event.action){ MotionEvent.ACTION_DOWN->{x=p.x;y=p.y;tx=event.rawX;ty=event.rawY;return true};MotionEvent.ACTION_MOVE->{p.x=x+(event.rawX-tx).toInt();p.y=y+(event.rawY-ty).toInt();wm.updateViewLayout(overlay,p);return true} };return false }
+  val touchSlop=ViewConfiguration.get(this).scaledTouchSlop
+  overlay.setOnTouchListener(object:View.OnTouchListener {
+   var startX=0;var startY=0;var downX=0f;var downY=0f
+   var dragging=false
+   override fun onTouch(v:View,event:MotionEvent):Boolean {
+    when(event.actionMasked) {
+     MotionEvent.ACTION_DOWN -> {
+      startX=p.x;startY=p.y;downX=event.rawX;downY=event.rawY
+      dragging=false
+      return true
+     }
+     MotionEvent.ACTION_MOVE -> {
+      val dx=event.rawX-downX;val dy=event.rawY-downY
+      if(!dragging && hypot(dx.toDouble(),dy.toDouble())>touchSlop) dragging=true
+      if(dragging) {
+       p.x=startX+dx.toInt();p.y=startY+dy.toInt()
+       wm.updateViewLayout(overlay,p)
+      }
+      return true
+     }
+     MotionEvent.ACTION_UP -> {
+      if(!dragging && hypot((event.rawX-downX).toDouble(),(event.rawY-downY).toDouble())<=touchSlop) {
+       val intent=Intent(this@DrivingService,MainActivity::class.java).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+       }
+       startActivity(intent)
+      }
+      return true
+     }
+     MotionEvent.ACTION_CANCEL -> { dragging=false;return true }
+    }
+    return true
+   }
   })
   wm.addView(overlay,p)
   lm=getSystemService(LOCATION_SERVICE) as LocationManager
@@ -126,7 +157,7 @@ class DrivingService : Service(), LocationListener {
    conn.doOutput=true
    conn.connectTimeout=15000
    conn.readTimeout=20000
-   conn.setRequestProperty("User-Agent","EuroRaptor/0.7 (personal experimental road matching)")
+   conn.setRequestProperty("User-Agent","EuroRaptor/0.8 (personal experimental road matching)")
    conn.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=UTF-8")
    conn.outputStream.use { it.write(("data="+java.net.URLEncoder.encode(q,"UTF-8")).toByteArray(Charsets.UTF_8)) }
    val code=conn.responseCode
