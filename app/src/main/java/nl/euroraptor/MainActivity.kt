@@ -75,7 +75,7 @@ class MainActivity : Activity() {
  }
  override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState)
   val layout = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(40,60,40,30) }
-  layout.addView(TextView(this).apply { text="EuroRaptor v1.5 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
+  layout.addView(TextView(this).apply { text="EuroRaptor v1.6 — experimenteel\n\n€ 0: geen boete. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
   val displaySettings=getSharedPreferences("display",MODE_PRIVATE)
   layout.addView(CheckBox(this).apply {
    text="Toon gemeten GPS-snelheid in overlay"
@@ -95,7 +95,7 @@ class MainActivity : Activity() {
   layout.addView(Button(this).apply {text="Stop schermdeeltest";setOnClickListener {
    stopService(Intent(this@MainActivity,ScreenProbeService::class.java))
   }})
-  layout.addView(TextView(this).apply {text="v1.5 zoekt lokaal naar het rode snelheidsbord en leest het getal met OCR. Alleen diagnostiek; nog geen boeteberekening. Geen screenshots opgeslagen of verzonden.";textSize=14f})
+  layout.addView(TextView(this).apply {text="v1.6 zoekt lokaal naar het rode snelheidsbord en leest het getal met OCR. Alleen diagnostiek; nog geen boeteberekening. Geen screenshots opgeslagen of verzonden.";textSize=14f})
   layout.addView(Button(this).apply {text="Importeer offline wegenkaart (.db)";setOnClickListener {
    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
     type="*/*";addCategory(Intent.CATEGORY_OPENABLE)
