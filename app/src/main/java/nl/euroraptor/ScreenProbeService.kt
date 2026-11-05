@@ -100,24 +100,44 @@ class ScreenProbeService:Service() {
   val right=(w*0.24).toInt()
   val top=(h*0.65).toInt()
   val bottom=(h*0.90).toInt()
-  var minX=right;var maxX=0;var minY=bottom;var maxY=0;var count=0
-  for(y in top until bottom step 3) for(x in 0 until right step 3) {
-   val c=bitmap.getPixel(x,y)
-   if(Color.red(c)>150 && Color.red(c)>Color.green(c)*1.6 &&
-      Color.red(c)>Color.blue(c)*1.4 && Color.green(c)<155) {
-    minX=minOf(minX,x);maxX=maxOf(maxX,x)
-    minY=minOf(minY,y);maxY=maxOf(maxY,y);count++
+  // Evaluate each possible ring separately; other red UI elements no longer
+  // enlarge a shared bounding rectangle.
+  fun isRed(c:Int)=Color.red(c)>140 && Color.red(c)>Color.green(c)*1.55 &&
+    Color.red(c)>Color.blue(c)*1.4 && Color.green(c)<160
+  fun isWhite(c:Int)=Color.red(c)>155 && Color.green(c)>155 && Color.blue(c)>155
+  var best=0.0;var cxBest=0;var cyBest=0;var radiusBest=0
+  val radii=intArrayOf((w*0.035).toInt(),(w*0.043).toInt(),(w*0.05).toInt(),(w*0.057).toInt())
+  for(r in radii) {
+   val step=(r/4).coerceAtLeast(6)
+   for(cy in top+r until bottom-r step step) for(cx in r until right-r step step) {
+    var ring=0;var white=0
+    for(i in 0 until 32) {
+     val angle=i*Math.PI/16.0
+     val dx=(kotlin.math.cos(angle)*r).toInt()
+     val dy=(kotlin.math.sin(angle)*r).toInt()
+     if(isRed(bitmap.getPixel(cx+dx,cy+dy))) ring++
+     if(isWhite(bitmap.getPixel(cx+(dx*0.60).toInt(),cy+(dy*0.60).toInt()))) white++
+    }
+    val score=ring/32.0*0.8+white/32.0*0.2
+    if(ring>=18 && white>=16 && score>best) {
+     best=score;cxBest=cx;cyBest=cy;radiusBest=r
+    }
    }
   }
-  val dx=maxX-minX;val dy=maxY-minY
-  val valid=count>20 && dx in (w*0.04).toInt()..(w*0.17).toInt() &&
-    kotlin.math.abs(dx-dy)<dx*0.35
-  if(!valid) {
+  if(radiusBest==0) {
    bitmap.recycle();previous=null;repeats=0
    getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
-    .putString("recognition","Geen rode snelheidsbord-cirkel").putString("candidate","—").apply()
+    .putString("circle","Niet gevonden")
+    .putString("ocr_text","—")
+    .putString("recognition","Geen rode cirkel met lichte binnenkant").putString("candidate","—").apply()
    scanning=false;return
   }
+  getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
+   .putString("circle","Gevonden x="+cxBest+" y="+cyBest+" r="+radiusBest+" score="+best).apply()
+  val inset=(radiusBest*0.26).toInt()
+  val minX=cxBest-radiusBest;val minY=cyBest-radiusBest
+  val maxX=cxBest+radiusBest;val maxY=cyBest+radiusBest
+  val dx=maxX-minX;val dy=maxY-minY
   val inset=(dx*0.22).toInt().coerceAtLeast(2)
   val x=minX+inset;val y=minY+inset
   val cw=(dx-2*inset).coerceAtLeast(1)
@@ -128,7 +148,9 @@ class ScreenProbeService:Service() {
   crop.recycle()
   recognizer.process(InputImage.fromBitmap(scaled,0))
    .addOnSuccessListener { result ->
-    val n=result.text.trim().replace(" ","").toIntOrNull()
+    val raw=result.text.trim()
+    val n=Regex("""\\b(10|20|30|40|50|60|70|80|90|100|110|120|130)\\b""").find(raw)?.value?.toIntOrNull()
+    getSharedPreferences("screen_probe",MODE_PRIVATE).edit().putString("ocr_text",raw.ifBlank { "(leeg)" }.take(60)).apply()
     if(n!=null && n in 10..130 && n%10==0) {
      repeats=if(n==previous) repeats+1 else 1
      previous=n
