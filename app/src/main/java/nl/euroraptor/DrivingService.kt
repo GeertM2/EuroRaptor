@@ -5,6 +5,9 @@ import android.app.*
 import android.content.*
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import android.location.*
 import android.os.*
 import android.view.*
@@ -49,7 +52,25 @@ class DrivingService : Service(), LocationListener {
   val notification=Notification.Builder(this,"driving").setContentTitle("EuroRaptor actief").setContentText("GPS en overlay actief").setSmallIcon(android.R.drawable.ic_menu_mylocation).build()
   startForeground(1,notification)
   wm=getSystemService(WINDOW_SERVICE) as WindowManager
-  overlay=TextView(this).apply { text="€ —"; textSize=30f; setTextColor(Color.WHITE); setBackgroundColor(Color.DKGRAY); setPadding(22,12,22,12) }
+  // Google Maps-like speed capsule: dark charcoal, white bold sans-serif,
+  // fully rounded ends and compact dimensions. Keep fine amount as the label.
+  val density=resources.displayMetrics.density
+  fun dp(value:Float)=(value*density+0.5f).toInt()
+  overlay=TextView(this).apply {
+   text="€ —"
+   setTextSize(TypedValue.COMPLEX_UNIT_SP,25f)
+   typeface=Typeface.create("sans-serif-medium",Typeface.BOLD)
+   setTextColor(Color.WHITE)
+   gravity=Gravity.CENTER
+   setPadding(dp(18f),dp(9f),dp(18f),dp(9f))
+   minHeight=dp(52f)
+   background=GradientDrawable().apply {
+    shape=GradientDrawable.RECTANGLE
+    cornerRadius=dp(100f).toFloat()
+    setColor(Color.rgb(13,16,20))
+   }
+   elevation=dp(5f).toFloat()
+  }
   val p=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT).apply { gravity=Gravity.TOP or Gravity.START; x=35; y=170 }
   val touchSlop=ViewConfiguration.get(this).scaledTouchSlop
   overlay.setOnTouchListener(object:View.OnTouchListener {
@@ -204,11 +225,15 @@ class DrivingService : Service(), LocationListener {
   if(prefs.getBoolean("show_limit",false))
    lines.add("Max: "+(limit?.let { "$it km/u" } ?: "—"))
   overlay.text=lines.joinToString("\n")
-  overlay.setBackgroundColor(when(result) {
-   is FineCalculator.Result.Amount -> if(result.euros==0) Color.rgb(0,110,40) else Color.rgb(160,35,25)
-   is FineCalculator.Result.Warning -> Color.rgb(175,30,25)
-   FineCalculator.Result.Unknown -> Color.DKGRAY
-  })
+  // Fixed Maps-style capsule background, regardless of fine amount.
+  // Status remains explicit in the displayed € amount or warning label.
+  overlay.background=GradientDrawable().apply {
+   shape=GradientDrawable.RECTANGLE
+   cornerRadius=100f*resources.displayMetrics.density
+   setColor(Color.rgb(13,16,20))
+  }
+  overlay.gravity=Gravity.CENTER
+  overlay.setTextColor(Color.WHITE)
  }
  override fun onDestroy() {lm.removeUpdates(this);wm.removeView(overlay);executor.shutdownNow();super.onDestroy()}
 }
