@@ -150,7 +150,7 @@ class ScreenProbeService:Service() {
    getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
     .putString("circle","Niet gevonden")
     .putString("ocr_text","—")
-    .putString("recognition","Geen rode cirkel met lichte binnenkant").putString("candidate","—").apply()
+    .putString("recognition","Geen rode cirkel met lichte binnenkant").apply()
    scanning=false;return
   }
   getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
