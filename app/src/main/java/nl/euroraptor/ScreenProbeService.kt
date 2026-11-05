@@ -149,7 +149,7 @@ class ScreenProbeService:Service() {
   recognizer.process(InputImage.fromBitmap(scaled,0))
    .addOnSuccessListener { result ->
     val raw=result.text.trim()
-    val n=Regex("""\\b(10|20|30|40|50|60|70|80|90|100|110|120|130)\\b""").find(raw)?.value?.toIntOrNull()
+    val n=Regex("""\b(10|20|30|40|50|60|70|80|90|100|110|120|130)\b""").find(raw)?.value?.toIntOrNull()
     getSharedPreferences("screen_probe",MODE_PRIVATE).edit().putString("ocr_text",raw.ifBlank { "(leeg)" }.take(60)).apply()
     if(n!=null && n in 10..130 && n%10==0) {
      repeats=if(n==previous) repeats+1 else 1
