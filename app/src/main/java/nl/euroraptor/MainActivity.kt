@@ -83,9 +83,9 @@ class MainActivity : Activity() {
    setPadding(px(20),px(18),px(20),px(24))
   }
   val scroller=ScrollView(this).apply {isFillViewport=true;addView(layout)}
-  layout.addView(TextView(this).apply {text="EuroRaptor 1.9";textSize=26f;setPadding(0,0,0,px(12))})
+  layout.addView(TextView(this).apply {text="EuroRaptor 2.0";textSize=26f;setPadding(0,0,0,px(12))})
   layout.addView(TextView(this).apply {
-   text="Boetebedrag op Google Maps\n€ 0 = geen boete  ·  € — = onbekend"
+   text="Boetebedrag op Google Maps\n€ 0 = geen boete  ·  € — = onbekend  ·  € ? = geen vast tarief"
    textSize=16f;setPadding(0,0,0,px(14))
   })
   layout.addView(Button(this).apply {text="1. Toestemmingen";setOnClickListener {
@@ -144,7 +144,7 @@ class MainActivity : Activity() {
    },mapRequest)
   }})
   details.addView(TextView(this).apply {
-   text="Boetebedragen zijn schattingen. GPS is geen gecertificeerde snelheidsmeting. Wegtype kan onzeker zijn. Schermbeelden worden lokaal geanalyseerd en niet opgeslagen."
+   text="Boetebedragen zijn schattingen. GPS is geen gecertificeerde snelheidsmeting. Het hoogste standaardtarief per wegcategorie wordt gebruikt. Schermbeelden worden lokaal geanalyseerd en niet opgeslagen."
    textSize=13f
   })
   setContentView(scroller)
