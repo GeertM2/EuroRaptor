@@ -225,15 +225,7 @@ class DrivingService : Service(), LocationListener {
   if(prefs.getBoolean("show_limit",false))
    lines.add("Max: "+(limit?.let { "$it km/u" } ?: "—"))
   overlay.text=lines.joinToString("\n")
-  // Fixed Maps-style capsule background, regardless of fine amount.
-  // Status remains explicit in the displayed € amount or warning label.
-  overlay.background=GradientDrawable().apply {
-   shape=GradientDrawable.RECTANGLE
-   cornerRadius=100f*resources.displayMetrics.density
-   setColor(Color.rgb(13,16,20))
-  }
-  overlay.gravity=Gravity.CENTER
-  overlay.setTextColor(Color.WHITE)
+
  }
  override fun onDestroy() {lm.removeUpdates(this);wm.removeView(overlay);executor.shutdownNow();super.onDestroy()}
 }
