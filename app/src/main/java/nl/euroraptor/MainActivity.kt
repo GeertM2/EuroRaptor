@@ -16,6 +16,8 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ScrollView
+import android.view.View
 
 class MainActivity : Activity() {
  private val mapRequest=1200
@@ -71,48 +73,77 @@ class MainActivity : Activity() {
   val duration=p.getLong("request_duration",0L)
   val offline=OfflineRoads(this).available()
   val capture=getSharedPreferences("screen_probe",MODE_PRIVATE)
-  diagnostics.text="Schermdeeltest: ${capture.getString("status","nog niet gestart")}\\nFrames: ${capture.getInt("frames",0)} | resolutie: ${capture.getString("size","—")}\\nMaximumsnelheid via Maps: ${capture.getString("candidate","—")}\\nStemmen: ${capture.getString("votes","nog geen")}\\nCirkel: ${capture.getString("circle","nog niet getest")}\\nOCR tekst: ${capture.getString("ocr_text","—")}\\nHerkenning: ${capture.getString("recognition","nog niet getest")}\\n\\nOffline kaart: ${if(offline) "geïnstalleerd" else "niet geïnstalleerd"}\\nDiagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}\\nServer: ${p.getString("server","—")}\\nLaatste aanvraag: $requestAge | duur: $duration ms".replace("\\n","\n")
+  diagnostics.text="Gebruikte limiet: ${p.getString("effective_limit","—")} (${p.getString("limit_source","—")})\\nWegcategorie: ${p.getString("road_class","—")}\\nSchermdeeltest: ${capture.getString("status","nog niet gestart")}\\nFrames: ${capture.getInt("frames",0)} | resolutie: ${capture.getString("size","—")}\\nMaximumsnelheid via Maps: ${capture.getString("candidate","—")}\\nStemmen: ${capture.getString("votes","nog geen")}\\nCirkel: ${capture.getString("circle","nog niet getest")}\\nOCR tekst: ${capture.getString("ocr_text","—")}\\nHerkenning: ${capture.getString("recognition","nog niet getest")}\\n\\nOffline kaart: ${if(offline) "geïnstalleerd" else "niet geïnstalleerd"}\\nDiagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}\\nServer: ${p.getString("server","—")}\\nLaatste aanvraag: $requestAge | duur: $duration ms".replace("\\n","\n")
  }
  override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState)
-  val layout = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(40,60,40,30) }
-  layout.addView(TextView(this).apply { text="EuroRaptor v1.7 — experimenteel\n\n€ 0: geen boete. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
-  val displaySettings=getSharedPreferences("display",MODE_PRIVATE)
-  layout.addView(CheckBox(this).apply {
-   text="Toon gemeten GPS-snelheid in overlay"
-   isChecked=displaySettings.getBoolean("show_speed",false)
-   setOnCheckedChangeListener { _, checked -> displaySettings.edit().putBoolean("show_speed",checked).apply() }
+  val dp=resources.displayMetrics.density
+  fun px(n:Int)=(n*dp).toInt()
+  val layout=LinearLayout(this).apply {
+   orientation=LinearLayout.VERTICAL
+   setPadding(px(20),px(18),px(20),px(24))
+  }
+  val scroller=ScrollView(this).apply {fillViewport=true;addView(layout)}
+  layout.addView(TextView(this).apply {text="EuroRaptor 1.8";textSize=26f;setPadding(0,0,0,px(12))})
+  layout.addView(TextView(this).apply {
+   text="Boetebedrag op Google Maps\\n€ 0 = geen boete  ·  € — = onbekend"
+   textSize=16f;setPadding(0,0,0,px(14))
   })
-  layout.addView(CheckBox(this).apply {
-   text="Toon toegestane snelheid in overlay"
-   isChecked=displaySettings.getBoolean("show_limit",false)
-   setOnCheckedChangeListener { _, checked -> displaySettings.edit().putBoolean("show_limit",checked).apply() }
-  })
-  layout.addView(TextView(this).apply {text="Boeteschatting: GPS afgerond, minus 3 km/u t/m 100 km/u of 3% daarboven (naar boven afgerond). Geen extra 5%.";textSize=14f})
-  layout.addView(Button(this).apply {text="Start schermdeeltest (met toestemming)";setOnClickListener {
+  layout.addView(Button(this).apply {text="1. Toestemmingen";setOnClickListener {
+   if(!Settings.canDrawOverlays(this@MainActivity))
+    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
+   requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,
+    *if(Build.VERSION.SDK_INT>=33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray()),1)
+  }})
+  layout.addView(Button(this).apply {text="2. Start overlay";setOnClickListener {
+   if(!Settings.canDrawOverlays(this@MainActivity) ||
+     checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
+    android.widget.Toast.makeText(this@MainActivity,"Geef eerst locatie- en overlaytoestemming",android.widget.Toast.LENGTH_LONG).show()
+    return@setOnClickListener
+   }
+   startForegroundService(Intent(this@MainActivity,DrivingService::class.java))
+  }})
+  layout.addView(Button(this).apply {text="3. Start Maps-herkenning";setOnClickListener {
    val manager=getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
    startActivityForResult(manager.createScreenCaptureIntent(),screenRequest)
   }})
-  layout.addView(Button(this).apply {text="Stop schermdeeltest";setOnClickListener {
+  layout.addView(TextView(this).apply {
+   text="Kies Entire screen en open daarna Google Maps. Schermdeling blijft zichtbaar in Android."
+   textSize=13f;setPadding(0,px(6),0,px(10))
+  })
+  layout.addView(Button(this).apply {text="Stop alles";setOnClickListener {
    stopService(Intent(this@MainActivity,ScreenProbeService::class.java))
+   stopService(Intent(this@MainActivity,DrivingService::class.java))
   }})
-  layout.addView(TextView(this).apply {text="v1.7 zoekt lokaal naar het rode snelheidsbord en leest het getal met OCR. Bevestiging na 3 gelijke waarnemingen binnen 5 seconden; korte vasthoudtijd. Alleen diagnostiek; nog geen boeteberekening. Geen screenshots opgeslagen of verzonden.";textSize=14f})
-  layout.addView(Button(this).apply {text="Importeer offline wegenkaart (.db)";setOnClickListener {
+  val displaySettings=getSharedPreferences("display",MODE_PRIVATE)
+  layout.addView(CheckBox(this).apply {
+   text="GPS-snelheid tonen"
+   isChecked=displaySettings.getBoolean("show_speed",false)
+   setOnCheckedChangeListener { _,v->displaySettings.edit().putBoolean("show_speed",v).apply() }
+  })
+  layout.addView(CheckBox(this).apply {
+   text="Maximumsnelheid tonen"
+   isChecked=displaySettings.getBoolean("show_limit",false)
+   setOnCheckedChangeListener { _,v->displaySettings.edit().putBoolean("show_limit",v).apply() }
+  })
+  val details=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;visibility=View.GONE}
+  layout.addView(Button(this).apply {text="Diagnostiek en extra opties ▼";setOnClickListener {
+   details.visibility=if(details.visibility==View.VISIBLE) View.GONE else View.VISIBLE
+   text=if(details.visibility==View.VISIBLE) "Diagnostiek en extra opties ▲" else "Diagnostiek en extra opties ▼"
+  }})
+  layout.addView(details)
+  diagnostics=TextView(this).apply {textSize=13f;setPadding(0,px(10),0,px(10))}
+  details.addView(diagnostics)
+  details.addView(Button(this).apply {text="Importeer offline wegenkaart (.db)";setOnClickListener {
    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
     type="*/*";addCategory(Intent.CATEGORY_OPENABLE)
    },mapRequest)
   }})
-  layout.addView(Button(this).apply { text="1. Toestemmingen"; setOnClickListener {
-   if (!Settings.canDrawOverlays(this@MainActivity)) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
-   requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, *if(Build.VERSION.SDK_INT>=33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray()),1)
-  } })
-  layout.addView(Button(this).apply { text="2. Start overlay"; setOnClickListener {
-   if (!Settings.canDrawOverlays(this@MainActivity) || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED) { android.widget.Toast.makeText(this@MainActivity,"Geef eerst locatie- en overlaytoestemming",android.widget.Toast.LENGTH_LONG).show(); return@setOnClickListener }
-   startForegroundService(Intent(this@MainActivity,DrivingService::class.java))
-  } })
-  layout.addView(Button(this).apply { text="Stop overlay"; setOnClickListener { stopService(Intent(this@MainActivity,DrivingService::class.java)) } })
-  diagnostics=TextView(this).apply {textSize=15f;setPadding(0,25,0,0)}
-  layout.addView(diagnostics)
-  setContentView(layout)
+  details.addView(TextView(this).apply {
+   text="Boetebedragen zijn schattingen. GPS is geen gecertificeerde snelheidsmeting. Wegtype kan onzeker zijn. Schermbeelden worden lokaal geanalyseerd en niet opgeslagen."
+   textSize=13f
+  })
+  setContentView(scroller)
   showDiagnostics()
  }
+
 }
