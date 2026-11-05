@@ -134,7 +134,6 @@ class ScreenProbeService:Service() {
   }
   getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
    .putString("circle","Gevonden x="+cxBest+" y="+cyBest+" r="+radiusBest+" score="+best).apply()
-  val inset=(radiusBest*0.26).toInt()
   val minX=cxBest-radiusBest;val minY=cyBest-radiusBest
   val maxX=cxBest+radiusBest;val maxY=cyBest+radiusBest
   val dx=maxX-minX;val dy=maxY-minY
