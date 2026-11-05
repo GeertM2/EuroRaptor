@@ -71,11 +71,11 @@ class MainActivity : Activity() {
   val duration=p.getLong("request_duration",0L)
   val offline=OfflineRoads(this).available()
   val capture=getSharedPreferences("screen_probe",MODE_PRIVATE)
-  diagnostics.text="Schermdeeltest: ${capture.getString("status","nog niet gestart")}\\nFrames: ${capture.getInt("frames",0)} | resolutie: ${capture.getString("size","—")}\\nMaximumsnelheid via Maps: ${capture.getString("candidate","—")}\\nHerkenning: ${capture.getString("recognition","nog niet getest")}\\n\\nOffline kaart: ${if(offline) "geïnstalleerd" else "niet geïnstalleerd"}\\nDiagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}\\nServer: ${p.getString("server","—")}\\nLaatste aanvraag: $requestAge | duur: $duration ms".replace("\\n","\n")
+  diagnostics.text="Schermdeeltest: ${capture.getString("status","nog niet gestart")}\\nFrames: ${capture.getInt("frames",0)} | resolutie: ${capture.getString("size","—")}\\nMaximumsnelheid via Maps: ${capture.getString("candidate","—")}\\nCirkel: ${capture.getString("circle","nog niet getest")}\\nOCR tekst: ${capture.getString("ocr_text","—")}\\nHerkenning: ${capture.getString("recognition","nog niet getest")}\\n\\nOffline kaart: ${if(offline) "geïnstalleerd" else "niet geïnstalleerd"}\\nDiagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}\\nServer: ${p.getString("server","—")}\\nLaatste aanvraag: $requestAge | duur: $duration ms".replace("\\n","\n")
  }
  override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState)
   val layout = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(40,60,40,30) }
-  layout.addView(TextView(this).apply { text="EuroRaptor v1.4 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
+  layout.addView(TextView(this).apply { text="EuroRaptor v1.5 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
   val displaySettings=getSharedPreferences("display",MODE_PRIVATE)
   layout.addView(CheckBox(this).apply {
    text="Toon gemeten GPS-snelheid in overlay"
@@ -95,7 +95,7 @@ class MainActivity : Activity() {
   layout.addView(Button(this).apply {text="Stop schermdeeltest";setOnClickListener {
    stopService(Intent(this@MainActivity,ScreenProbeService::class.java))
   }})
-  layout.addView(TextView(this).apply {text="v1.4 zoekt lokaal naar het rode snelheidsbord en leest het getal met OCR. Alleen diagnostiek; nog geen boeteberekening. Geen screenshots opgeslagen of verzonden.";textSize=14f})
+  layout.addView(TextView(this).apply {text="v1.5 zoekt lokaal naar het rode snelheidsbord en leest het getal met OCR. Alleen diagnostiek; nog geen boeteberekening. Geen screenshots opgeslagen of verzonden.";textSize=14f})
   layout.addView(Button(this).apply {text="Importeer offline wegenkaart (.db)";setOnClickListener {
    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
     type="*/*";addCategory(Intent.CATEGORY_OPENABLE)
