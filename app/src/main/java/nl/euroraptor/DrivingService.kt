@@ -41,6 +41,7 @@ class DrivingService : Service(), LocationListener {
  private var lastDuration=0L
  private var server="nog geen"
  private var speed:Double?=null
+ private lateinit var offlineRoads:OfflineRoads
  override fun onBind(intent:Intent?)=null
  @SuppressLint("MissingPermission") override fun onCreate() { super.onCreate()
   val channel=NotificationChannel("driving","EuroRaptor actief",NotificationManager.IMPORTANCE_LOW)
@@ -85,6 +86,7 @@ class DrivingService : Service(), LocationListener {
    }
   })
   wm.addView(overlay,p)
+  offlineRoads=OfflineRoads(this)
   lm=getSystemService(LOCATION_SERVICE) as LocationManager
   lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000L,0f,this)
  }
@@ -92,7 +94,8 @@ class DrivingService : Service(), LocationListener {
   val now=System.currentTimeMillis()
   speed=if(location.hasSpeed() && location.hasAccuracy() && location.accuracy<=25f) location.speed*3.6 else null
   val cacheDistance=if(roadsLoadedAt>0) distance(location.latitude,location.longitude,lastLat,lastLon) else Double.MAX_VALUE
-  val withinCache=roadsLoadedAt>0 && now-roadsLoadedAt<180000 && cacheDistance<cacheRadius-100
+  val offline=offlineRoads.available()
+  val withinCache=roadsLoadedAt>0 && (offline || now-roadsLoadedAt<180000) && cacheDistance<cacheRadius-100
   val match=if(withinCache) RoadMatcher.choose(roads,location,previousRoad) else null
   limit=match?.limit
   roadType=match?.type
@@ -110,8 +113,8 @@ class DrivingService : Service(), LocationListener {
    .putString("server",server).apply()
   // Shared Overpass instances are unsuitable for continuous high-frequency tracking.
   // Keep requests deliberately sparse; unknown is safer than an outdated limit.
-  if(!fetching && now-lastQuery>60000L && (roadsLoadedAt==0L ||
-    cacheDistance>cacheRadius-350 || now-roadsLoadedAt>150000L)) {
+  if(!fetching && now-lastQuery>(if(offline) 3000L else 60000L) && (roadsLoadedAt==0L ||
+    cacheDistance>cacheRadius-350 || (!offline && now-roadsLoadedAt>150000L))) {
    fetching=true
    lastQuery=now
    lastRequestAt=now
@@ -120,12 +123,14 @@ class DrivingService : Service(), LocationListener {
    val bearing=if(location.hasBearing() && location.hasSpeed() && location.speed>4f) location.bearing.toDouble() else null
    executor.execute {
     val started=System.currentTimeMillis()
-    val result=fetchRoads(lat,lon,bearing)
+    val result=if(offline) try { FetchResult.Success(offlineRoads.query(lat,lon),"offline SQLite") }
+       catch(e:Exception) { FetchResult.Error("Offline kaartfout: ${e.javaClass.simpleName}: ${e.message?.take(70)}","offline SQLite") }
+      else fetchRoads(lat,lon,bearing)
     handler.post {
      lastDuration=System.currentTimeMillis()-started
      when(result) {
       is FetchResult.Success -> {
-       roads=result.roads;lastLat=lat;lastLon=lon;cacheRadius=if(bearing==null) 400.0 else 500.0;roadsLoadedAt=System.currentTimeMillis()
+       roads=result.roads;lastLat=lat;lastLon=lon;cacheRadius=if(offline) 650.0 else if(bearing==null) 400.0 else 500.0;roadsLoadedAt=System.currentTimeMillis()
        server=result.server
        lastNetwork=if(result.roads.isEmpty()) "Geen wegen gevonden (${result.server})" else "Kaart ontvangen: ${result.roads.size} wegen (${result.server})"
       }
