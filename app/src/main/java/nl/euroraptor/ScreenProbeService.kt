@@ -30,8 +30,29 @@ class ScreenProbeService:Service() {
  private val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
  private var scanning=false
  private var lastScan=0L
- private var previous:Int?=null
- private var repeats=0
+ private val observations=ArrayDeque<Pair<Long,Int>>()
+ private var confirmedLimit:Int?=null
+ private var lastConfirmedAt=0L
+ private val voteWindowMs=5000L
+ private val holdMs=4500L
+ private fun recordObservation(value:Int?) {
+  val now=System.currentTimeMillis()
+  while(observations.isNotEmpty() && now-observations.first().first>voteWindowMs)
+   observations.removeFirst()
+  if(value!=null) observations.addLast(now to value)
+  val winner=observations.groupingBy { it.second }.eachCount().maxByOrNull { it.value }
+  if(winner!=null && winner.value>=3) {
+   confirmedLimit=winner.key
+   lastConfirmedAt=now
+  }
+  if(now-lastConfirmedAt>holdMs) confirmedLimit=null
+  val confirmed=confirmedLimit
+  getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
+   .putString("candidate",confirmed?.let { "$it km/u" } ?: "—")
+   .putLong("candidate_at",if(confirmed!=null) lastConfirmedAt else 0L)
+   .putString("votes",winner?.let { "${it.key} km/u: ${it.value} waarnemingen / 5 s" } ?: "0 waarnemingen / 5 s")
+   .apply()
+ }
  private val callback=object:MediaProjection.Callback() {
   override fun onStop() { stopSelf() }
  }
@@ -125,7 +146,7 @@ class ScreenProbeService:Service() {
    }
   }
   if(radiusBest==0) {
-   bitmap.recycle();previous=null;repeats=0
+   bitmap.recycle();recordObservation(null)
    getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
     .putString("circle","Niet gevonden")
     .putString("ocr_text","—")
@@ -150,15 +171,14 @@ class ScreenProbeService:Service() {
     val raw=result.text.trim()
     val n=Regex("""\b(10|20|30|40|50|60|70|80|90|100|110|120|130)\b""").find(raw)?.value?.toIntOrNull()
     getSharedPreferences("screen_probe",MODE_PRIVATE).edit().putString("ocr_text",raw.ifBlank { "(leeg)" }.take(60)).apply()
-    if(n!=null && n in 10..130 && n%10==0) {
-     repeats=if(n==previous) repeats+1 else 1
-     previous=n
-    } else {previous=null;repeats=0}
-    val confirmed=repeats>=2
+    recordObservation(n)
+    val confirmed=confirmedLimit
     getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
-     .putString("candidate",if(confirmed) "$n km/u" else "—")
-     .putString("recognition",if(confirmed) "Bord herkend (alleen test)" else "OCR: "+result.text.take(25))
-     .putLong("candidate_at",if(confirmed) System.currentTimeMillis() else 0L).apply()
+     .putString("recognition",when {
+      confirmed!=null -> "Bevestigd: $confirmed km/u (diagnostisch)"
+      n!=null -> "OCR: $n, wachten op 3 waarnemingen"
+      else -> "Cirkel gevonden, OCR zonder geldige limiet"
+     }).apply()
    }
    .addOnFailureListener { e ->
     getSharedPreferences("screen_probe",MODE_PRIVATE).edit().putString("recognition","OCR: "+e.javaClass.simpleName).apply()
@@ -172,7 +192,9 @@ class ScreenProbeService:Service() {
   projection?.unregisterCallback(callback)
   projection?.stop()
   recognizer.close()
-  getSharedPreferences("screen_probe",MODE_PRIVATE).edit().putString("status","Gestopt").apply()
+  getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
+   .putString("status","Gestopt").putString("candidate","—")
+   .putLong("candidate_at",0L).putString("votes","Schermdeling gestopt").apply()
   super.onDestroy()
  }
 }
