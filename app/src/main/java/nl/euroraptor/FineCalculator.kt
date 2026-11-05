@@ -16,6 +16,14 @@ object FineCalculator {
     private val urban = intArrayOf(37,46,56,65,73,84,95,129,140,155,166,179,192,207,223,237,255,272,289,308,324,345,363,387,405,426,446)
     private val rural = intArrayOf(33,42,50,59,68,79,89,121,134,147,159,172,184,197,210,227,243,258,273,289,308,326,345,362,381,404,424)
     private val motorway = intArrayOf(28,34,49,49,56,64,84,115,126,136,147,159,171,185,200,213,229,244,258,273,289,304,321,337,350,369,389,408,427,446,468,488,508,520,520,520,520)
+    // Conservative estimate: highest standard fine across possible road categories.
+    // No road classification or special-zone inference is required.
+    fun calculateWorstCase(measuredKmh: Double, limitKmh: Int?): Result {
+        if (!measuredKmh.isFinite() || measuredKmh < 0 || limitKmh == null || limitKmh <= 0) return Result.Unknown
+        val outcomes = RoadType.values().map { calculate(measuredKmh, limitKmh, it) }
+        if (outcomes.any { it is Result.Warning || it is Result.Unknown }) return Result.Warning("€ ?")
+        return Result.Amount(outcomes.filterIsInstance<Result.Amount>().maxOf { it.euros })
+    }
     fun calculate(measuredKmh: Double, limitKmh: Int?, roadType: RoadType?, specialZone: Boolean = false): Result {
         if (!measuredKmh.isFinite() || measuredKmh < 0 || limitKmh == null || limitKmh <= 0) return Result.Unknown
         val measured = measuredKmh.roundToInt()
