@@ -31,7 +31,7 @@ class MainActivity : Activity() {
  }
  override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState)
   val layout = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(40,60,40,30) }
-  layout.addView(TextView(this).apply { text="EuroRaptor v0.8 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
+  layout.addView(TextView(this).apply { text="EuroRaptor v0.9 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
   val displaySettings=getSharedPreferences("display",MODE_PRIVATE)
   layout.addView(CheckBox(this).apply {
    text="Toon gemeten GPS-snelheid in overlay"
