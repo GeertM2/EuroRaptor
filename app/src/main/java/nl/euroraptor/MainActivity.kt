@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import java.io.File
 import android.content.Intent
 import android.net.Uri
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -18,8 +19,18 @@ import android.widget.TextView
 
 class MainActivity : Activity() {
  private val mapRequest=1200
+ private val screenRequest=1201
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
   super.onActivityResult(requestCode,resultCode,data)
+  if(requestCode==screenRequest) {
+   if(resultCode==RESULT_OK && data!=null) {
+    startForegroundService(Intent(this,ScreenProbeService::class.java).apply {
+     putExtra("resultCode",resultCode)
+     putExtra("consent",data)
+    })
+   }
+   return
+  }
   if(requestCode!=mapRequest || resultCode!=RESULT_OK) return
   val uri=data?.data?:return
   android.widget.Toast.makeText(this,"Kaart importeren…",android.widget.Toast.LENGTH_SHORT).show()
@@ -59,11 +70,12 @@ class MainActivity : Activity() {
   val requestAge=if(request==0L) "nog nooit" else "${(System.currentTimeMillis()-request)/1000} s geleden"
   val duration=p.getLong("request_duration",0L)
   val offline=OfflineRoads(this).available()
-  diagnostics.text="Offline kaart: ${if(offline) "geïnstalleerd" else "niet geïnstalleerd"}\\nDiagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}\\nServer: ${p.getString("server","—")}\\nLaatste aanvraag: $requestAge | duur: $duration ms".replace("\\n","\n")
+  val capture=getSharedPreferences("screen_probe",MODE_PRIVATE)
+  diagnostics.text="Schermdeeltest: ${capture.getString("status","nog niet gestart")}\\nFrames: ${capture.getInt("frames",0)} | resolutie: ${capture.getString("size","—")}\\nMaximumsnelheid via Maps: nog niet herkend\\n\\nOffline kaart: ${if(offline) "geïnstalleerd" else "niet geïnstalleerd"}\\nDiagnostiek ($age)\\nGPS: ${p.getString("speed","—")} | nauwkeurigheid: ${p.getString("accuracy","—")}\\nLimiet: ${p.getString("limit","—")} | weg-ID: ${p.getString("road","—")}\\nCache: ${p.getString("cache","—")}\\nStatus: ${p.getString("status","—")}\\nNetwerk: ${p.getString("network","—")}\\nServer: ${p.getString("server","—")}\\nLaatste aanvraag: $requestAge | duur: $duration ms".replace("\\n","\n")
  }
  override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState)
   val layout = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(40,60,40,30) }
-  layout.addView(TextView(this).apply { text="EuroRaptor v1.2 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
+  layout.addView(TextView(this).apply { text="EuroRaptor v1.3 — experimenteel\n\nGroen: € 0. Onbekend: € —. De boetebedragen zijn schattingen."; textSize=19f })
   val displaySettings=getSharedPreferences("display",MODE_PRIVATE)
   layout.addView(CheckBox(this).apply {
    text="Toon gemeten GPS-snelheid in overlay"
@@ -76,6 +88,14 @@ class MainActivity : Activity() {
    setOnCheckedChangeListener { _, checked -> displaySettings.edit().putBoolean("show_limit",checked).apply() }
   })
   layout.addView(TextView(this).apply {text="Boeteschatting: GPS afgerond, minus 3 km/u t/m 100 km/u of 3% daarboven (naar boven afgerond). Geen extra 5%.";textSize=14f})
+  layout.addView(Button(this).apply {text="Start schermdeeltest (met toestemming)";setOnClickListener {
+   val manager=getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+   startActivityForResult(manager.createScreenCaptureIntent(),screenRequest)
+  }})
+  layout.addView(Button(this).apply {text="Stop schermdeeltest";setOnClickListener {
+   stopService(Intent(this@MainActivity,ScreenProbeService::class.java))
+  }})
+  layout.addView(TextView(this).apply {text="v1.3 controleert alleen of schermbeelden binnenkomen. Geen screenshots opgeslagen of verzonden.";textSize=14f})
   layout.addView(Button(this).apply {text="Importeer offline wegenkaart (.db)";setOnClickListener {
    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
     type="*/*";addCategory(Intent.CATEGORY_OPENABLE)
