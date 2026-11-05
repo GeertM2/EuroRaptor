@@ -83,9 +83,9 @@ class MainActivity : Activity() {
    setPadding(px(20),px(18),px(20),px(24))
   }
   val scroller=ScrollView(this).apply {isFillViewport=true;addView(layout)}
-  layout.addView(TextView(this).apply {text="EuroRaptor 1.8";textSize=26f;setPadding(0,0,0,px(12))})
+  layout.addView(TextView(this).apply {text="EuroRaptor 1.9";textSize=26f;setPadding(0,0,0,px(12))})
   layout.addView(TextView(this).apply {
-   text="Boetebedrag op Google Maps\\n€ 0 = geen boete  ·  € — = onbekend"
+   text="Boetebedrag op Google Maps\n€ 0 = geen boete  ·  € — = onbekend"
    textSize=16f;setPadding(0,0,0,px(14))
   })
   layout.addView(Button(this).apply {text="1. Toestemmingen";setOnClickListener {
@@ -124,6 +124,11 @@ class MainActivity : Activity() {
    text="Maximumsnelheid tonen"
    isChecked=displaySettings.getBoolean("show_limit",false)
    setOnCheckedChangeListener { _,v->displaySettings.edit().putBoolean("show_limit",v).apply() }
+  })
+  layout.addView(CheckBox(this).apply {
+   text="Diagnostiek in overlay tonen (tijdelijk)"
+   isChecked=displaySettings.getBoolean("show_diagnostics_overlay",false)
+   setOnCheckedChangeListener { _,v->displaySettings.edit().putBoolean("show_diagnostics_overlay",v).apply() }
   })
   val details=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;visibility=View.GONE}
   layout.addView(Button(this).apply {text="Diagnostiek en extra opties ▼";setOnClickListener {
