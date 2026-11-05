@@ -41,7 +41,7 @@ class ScreenProbeService:Service() {
    observations.removeFirst()
   if(value!=null) observations.addLast(now to value)
   val winner=observations.groupingBy { it.second }.eachCount().maxByOrNull { it.value }
-  if(winner!=null && winner.value>=3) {
+  if(value!=null && winner!=null && winner.key==value && winner.value>=3) {
    confirmedLimit=winner.key
    lastConfirmedAt=now
   }
