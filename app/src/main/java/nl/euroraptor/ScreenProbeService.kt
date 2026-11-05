@@ -29,7 +29,7 @@ class ScreenProbeService:Service() {
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
   if(intent?.action=="STOP") {stopSelf();return START_NOT_STICKY}
   val token=if(Build.VERSION.SDK_INT>=33) intent?.getParcelableExtra("consent",Intent::class.java)
-    else @Suppress("DEPRECATION") intent?.getParcelableExtra<Intent>("consent")
+    else intent?.getParcelableExtra<Intent>("consent")
   val code=intent?.getIntExtra("resultCode",Activity.RESULT_CANCELED)?:Activity.RESULT_CANCELED
   if(code!=Activity.RESULT_OK || token==null) {stopSelf();return START_NOT_STICKY}
   val channel=NotificationChannel("screen_probe","Schermdeeltest",NotificationManager.IMPORTANCE_LOW)
