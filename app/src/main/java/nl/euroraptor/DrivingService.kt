@@ -39,7 +39,7 @@ class DrivingService : Service(), LocationListener {
  private var lastNetwork="Nog geen kaartaanvraag"
  private var lastRequestAt=0L
  private var lastDuration=0L
- private val server="overpass-api.de"
+ private var server="nog geen"
  private var speed:Double?=null
  override fun onBind(intent:Intent?)=null
  @SuppressLint("MissingPermission") override fun onCreate() { super.onCreate()
@@ -125,10 +125,11 @@ class DrivingService : Service(), LocationListener {
      lastDuration=System.currentTimeMillis()-started
      when(result) {
       is FetchResult.Success -> {
-       roads=result.roads;lastLat=lat;lastLon=lon;cacheRadius=if(bearing==null) 900.0 else 1100.0;roadsLoadedAt=System.currentTimeMillis()
-       lastNetwork=if(result.roads.isEmpty()) "Geen wegen gevonden" else "Kaart ontvangen: ${result.roads.size} wegen"
+       roads=result.roads;lastLat=lat;lastLon=lon;cacheRadius=if(bearing==null) 400.0 else 500.0;roadsLoadedAt=System.currentTimeMillis()
+       server=result.server
+       lastNetwork=if(result.roads.isEmpty()) "Geen wegen gevonden (${result.server})" else "Kaart ontvangen: ${result.roads.size} wegen (${result.server})"
       }
-      is FetchResult.Error -> lastNetwork=result.message
+      is FetchResult.Error -> {server=result.server;lastNetwork=result.message}
      }
      fetching=false
     }
@@ -139,41 +140,50 @@ class DrivingService : Service(), LocationListener {
   val x=(a-c)*111000;val y=(b-d)*111000*cos(Math.toRadians(a));return hypot(x,y)
  }
  private sealed class FetchResult {
-  data class Success(val roads:List<RoadMatcher.Road>):FetchResult()
-  data class Error(val message:String):FetchResult()
+  data class Success(val roads:List<RoadMatcher.Road>,val server:String):FetchResult()
+  data class Error(val message:String,val server:String):FetchResult()
  }
  private fun fetchRoads(lat:Double,lon:Double,bearing:Double?):FetchResult {
-  var conn:HttpURLConnection?=null
-  return try {
-   val ahead=if(bearing!=null) {
-    val rad=Math.toRadians(bearing)
-    val futureLat=lat+sin(rad)*550.0/111320.0
-    val futureLon=lon+cos(rad)*550.0/(111320.0*cos(Math.toRadians(lat)))
-    "way(around:700,$futureLat,$futureLon)[highway][maxspeed];"
-   } else ""
-   val q="[out:json][timeout:15];(way(around:650,$lat,$lon)[highway][maxspeed];$ahead);out geom;"
-   conn=URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
-   conn.requestMethod="POST"
-   conn.doOutput=true
-   conn.connectTimeout=15000
-   conn.readTimeout=20000
-   conn.setRequestProperty("User-Agent","EuroRaptor/0.8 (personal experimental road matching)")
-   conn.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=UTF-8")
-   conn.outputStream.use { it.write(("data="+java.net.URLEncoder.encode(q,"UTF-8")).toByteArray(Charsets.UTF_8)) }
-   val code=conn.responseCode
-   if(code !in 200..299) {
-    val detail=try { conn.errorStream?.bufferedReader()?.use { it.readText().take(180).replace("\n"," ") } ?: "" } catch(_:Exception) { "" }
-    FetchResult.Error("HTTP $code"+if(detail.isNotBlank()) ": $detail" else "")
-   } else {
-    val data=conn.inputStream.bufferedReader().use { it.readText() }
-    try { FetchResult.Success(RoadMatcher.parse(data)) }
-    catch(e:Exception) { FetchResult.Error("Ongeldige kaartdata: ${e.javaClass.simpleName}: ${e.message?.take(100)}") }
-   }
-  } catch(e:SocketTimeoutException) { FetchResult.Error("Timeout: ${e.message?.take(90)}") }
-    catch(e:UnknownHostException) { FetchResult.Error("DNS-fout: ${e.message?.take(90)}") }
-    catch(e:SSLException) { FetchResult.Error("TLS-fout: ${e.message?.take(90)}") }
-    catch(e:Exception) { FetchResult.Error("${e.javaClass.simpleName}: ${e.message?.take(120)}") }
-  finally { conn?.disconnect() }
+  // Limit each request's footprint and retry once on an independent public endpoint.
+  val ahead=if(bearing!=null) {
+   val rad=Math.toRadians(bearing)
+   val futureLat=lat+sin(rad)*300.0/111320.0
+   val futureLon=lon+cos(rad)*300.0/(111320.0*cos(Math.toRadians(lat)))
+   "way(around:400,$futureLat,$futureLon)[highway][maxspeed];"
+  } else ""
+  val q="[out:json][timeout:20];(way(around:400,$lat,$lon)[highway][maxspeed];$ahead);out geom;"
+  val endpoints=listOf("https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter")
+  var lastError="Geen reactie"
+  var lastServer="nog geen"
+  for(endpoint in endpoints) {
+   val host=URL(endpoint).host
+   lastServer=host
+   var conn:HttpURLConnection?=null
+   try {
+    conn=URL(endpoint).openConnection() as HttpURLConnection
+    conn.requestMethod="POST"
+    conn.doOutput=true
+    conn.connectTimeout=10000
+    conn.readTimeout=25000
+    conn.setRequestProperty("User-Agent","EuroRaptor/0.9 (personal experimental road matching)")
+    conn.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=UTF-8")
+    conn.outputStream.use { it.write(("data="+java.net.URLEncoder.encode(q,"UTF-8")).toByteArray(Charsets.UTF_8)) }
+    val code=conn.responseCode
+    if(code !in 200..299) {
+     val detail=try { conn.errorStream?.bufferedReader()?.use { it.readText().take(90).replace("\n"," ") } ?: "" } catch(_:Exception) { "" }
+     lastError="HTTP $code"+if(detail.isNotBlank()) ": $detail" else ""
+    } else {
+     val data=conn.inputStream.bufferedReader().use { it.readText() }
+     try { return FetchResult.Success(RoadMatcher.parse(data),host) }
+     catch(e:Exception) {lastError="Ongeldige kaartdata: ${e.javaClass.simpleName}"}
+    }
+   } catch(e:SocketTimeoutException) {lastError="Timeout"}
+     catch(e:UnknownHostException) {lastError="DNS-fout"}
+     catch(e:SSLException) {lastError="TLS-fout"}
+     catch(e:Exception) {lastError="${e.javaClass.simpleName}: ${e.message?.take(80)}"}
+   finally {conn?.disconnect()}
+  }
+  return FetchResult.Error("Beide servers mislukt; laatste: $lastError",lastServer)
  }
  private fun update() {
   val result=speed?.let { FineCalculator.calculate(it,limit,roadType,specialZone) } ?: FineCalculator.Result.Unknown
