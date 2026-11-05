@@ -223,21 +223,12 @@ class DrivingService : Service(), LocationListener {
   val mapsLimit=if(capturedAt>0L && now-capturedAt<6000L &&
     lastFrame>0L && now-lastFrame<4000L &&
     capture.getString("status","")=="Schermbeelden ontvangen") captured else null
-  val effectiveLimit=mapsLimit ?: limit
-  // Prefer a matched road classification; otherwise infer a provisional category
-  // from the speed limit. This is only an estimate, not a legal road classification.
-  val estimatedRoadType=roadType ?: when(effectiveLimit) {
-   10,20,30,40,50 -> FineCalculator.RoadType.URBAN
-   60,70,80,90 -> FineCalculator.RoadType.RURAL
-   110,120,130 -> FineCalculator.RoadType.MOTORWAY
-   100 -> null // 100 km/h may be motorway or another road category.
-   else -> null
-  }
-  val result=speed?.let { FineCalculator.calculate(it,effectiveLimit,estimatedRoadType,specialZone) } ?: FineCalculator.Result.Unknown
+  val effectiveLimit=mapsLimit
+  val result=speed?.let { FineCalculator.calculateWorstCase(it,effectiveLimit) } ?: FineCalculator.Result.Unknown
   getSharedPreferences("diagnostics",MODE_PRIVATE).edit()
    .putString("effective_limit",effectiveLimit?.let { "$it km/u" }?:"—")
-   .putString("limit_source",if(mapsLimit!=null) "Google Maps OCR" else if(limit!=null) "Wegenkaart" else "Onbekend")
-   .putString("road_class",estimatedRoadType?.name?:"Onbekend")
+   .putString("limit_source",if(mapsLimit!=null) "Google Maps OCR" else "Onbekend")
+   .putString("road_class","Niet nodig")
    .apply()
   val amount=when(result) {
    is FineCalculator.Result.Amount -> "€ ${result.euros}"
@@ -254,12 +245,12 @@ class DrivingService : Service(), LocationListener {
    val ocr=capture.getString("ocr_text","—")
    val votes=capture.getString("votes","—")
    val captureStatus=capture.getString("status","—")
-   val source=if(mapsLimit!=null) "Maps" else if(limit!=null) "OSM" else "?"
+   val source=if(mapsLimit!=null) "Maps" else "?"
    val age=if(capturedAt>0L) "${(now-capturedAt)/1000}s" else "—"
    lines.add("GPS ${speed?.roundToInt() ?: "—"} | Max ${effectiveLimit ?: "—"} | $source")
    lines.add("OCR $ocr | $votes")
    lines.add("Frame ${if(lastFrame>0) "${(now-lastFrame)/1000}s" else "—"} | Limiet $age")
-   lines.add("Weg ${estimatedRoadType?.name ?: "?"} | $captureStatus")
+   lines.add("Worst-case | $captureStatus")
   }
   overlay.setTextSize(TypedValue.COMPLEX_UNIT_SP,if(prefs.getBoolean("show_diagnostics_overlay",false)) 15f else 25f)
   overlay.text=lines.joinToString("\n")
