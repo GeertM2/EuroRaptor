@@ -82,7 +82,7 @@ class MainActivity : Activity() {
    orientation=LinearLayout.VERTICAL
    setPadding(px(20),px(18),px(20),px(24))
   }
-  val scroller=ScrollView(this).apply {fillViewport=true;addView(layout)}
+  val scroller=ScrollView(this).apply {isFillViewport=true;addView(layout)}
   layout.addView(TextView(this).apply {text="EuroRaptor 1.8";textSize=26f;setPadding(0,0,0,px(12))})
   layout.addView(TextView(this).apply {
    text="Boetebedrag op Google Maps\\n€ 0 = geen boete  ·  € — = onbekend"
