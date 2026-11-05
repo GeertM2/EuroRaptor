@@ -45,6 +45,7 @@ class DrivingService : Service(), LocationListener {
  private var server="nog geen"
  private var speed:Double?=null
  private lateinit var offlineRoads:OfflineRoads
+ private val refreshOverlay=object:Runnable {override fun run() { if(::overlay.isInitialized) update();handler.postDelayed(this,500L) }}
  override fun onBind(intent:Intent?)=null
  @SuppressLint("MissingPermission") override fun onCreate() { super.onCreate()
   val channel=NotificationChannel("driving","EuroRaptor actief",NotificationManager.IMPORTANCE_LOW)
@@ -111,6 +112,7 @@ class DrivingService : Service(), LocationListener {
   offlineRoads=OfflineRoads(this)
   lm=getSystemService(LOCATION_SERVICE) as LocationManager
   lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000L,0f,this)
+  handler.post(refreshOverlay)
  }
  override fun onLocationChanged(location:Location) {
   val now=System.currentTimeMillis()
@@ -218,7 +220,7 @@ class DrivingService : Service(), LocationListener {
   val captured=capture.getString("candidate","—")?.substringBefore(" ")?.toIntOrNull()
   val lastFrame=capture.getLong("last_frame",0L)
   val now=System.currentTimeMillis()
-  val mapsLimit=if(capturedAt>0L && now-capturedAt<5000L &&
+  val mapsLimit=if(capturedAt>0L && now-capturedAt<6000L &&
     lastFrame>0L && now-lastFrame<4000L &&
     capture.getString("status","")=="Schermbeelden ontvangen") captured else null
   val effectiveLimit=mapsLimit ?: limit
@@ -227,7 +229,8 @@ class DrivingService : Service(), LocationListener {
   val estimatedRoadType=roadType ?: when(effectiveLimit) {
    10,20,30,40,50 -> FineCalculator.RoadType.URBAN
    60,70,80,90 -> FineCalculator.RoadType.RURAL
-   100,110,120,130 -> null // 100 km/h may be a motorway or non-motorway.
+   110,120,130 -> FineCalculator.RoadType.MOTORWAY
+   100 -> null // 100 km/h may be motorway or another road category.
    else -> null
   }
   val result=speed?.let { FineCalculator.calculate(it,effectiveLimit,estimatedRoadType,specialZone) } ?: FineCalculator.Result.Unknown
@@ -247,8 +250,20 @@ class DrivingService : Service(), LocationListener {
    lines.add("GPS: "+(speed?.let { "${it.roundToInt()} km/u" } ?: "—"))
   if(prefs.getBoolean("show_limit",false))
    lines.add("Max: "+(effectiveLimit?.let { "$it km/u" } ?: "—"))
+  if(prefs.getBoolean("show_diagnostics_overlay",false)) {
+   val ocr=capture.getString("ocr_text","—")
+   val votes=capture.getString("votes","—")
+   val captureStatus=capture.getString("status","—")
+   val source=if(mapsLimit!=null) "Maps" else if(limit!=null) "OSM" else "?"
+   val age=if(capturedAt>0L) "${(now-capturedAt)/1000}s" else "—"
+   lines.add("GPS ${speed?.roundToInt() ?: "—"} | Max ${effectiveLimit ?: "—"} | $source")
+   lines.add("OCR $ocr | $votes")
+   lines.add("Frame ${if(lastFrame>0) "${(now-lastFrame)/1000}s" else "—"} | Limiet $age")
+   lines.add("Weg ${estimatedRoadType?.name ?: "?"} | $captureStatus")
+  }
+  overlay.setTextSize(TypedValue.COMPLEX_UNIT_SP,if(prefs.getBoolean("show_diagnostics_overlay",false)) 15f else 25f)
   overlay.text=lines.joinToString("\n")
 
  }
- override fun onDestroy() {lm.removeUpdates(this);wm.removeView(overlay);executor.shutdownNow();super.onDestroy()}
+ override fun onDestroy() {handler.removeCallbacks(refreshOverlay);lm.removeUpdates(this);wm.removeView(overlay);executor.shutdownNow();super.onDestroy()}
 }
