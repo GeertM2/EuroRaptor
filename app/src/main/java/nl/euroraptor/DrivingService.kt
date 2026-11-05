@@ -152,7 +152,7 @@ class DrivingService : Service(), LocationListener {
    "way(around:400,$futureLat,$futureLon)[highway][maxspeed];"
   } else ""
   val q="[out:json][timeout:20];(way(around:400,$lat,$lon)[highway][maxspeed];$ahead);out geom;"
-  val endpoints=listOf("https://overpass.kumi.systems/api/interpreter","https://overpass.nchc.org.tw/api/interpreter")
+  val endpoints=listOf("https://overpass.kumi.systems/api/interpreter","https://overpass.private.coffee/api/interpreter")
   var lastError="Geen reactie"
   var lastServer="nog geen"
   for(endpoint in endpoints) {
