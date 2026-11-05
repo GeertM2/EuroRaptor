@@ -68,6 +68,7 @@ class DrivingService : Service(), LocationListener {
     shape=GradientDrawable.RECTANGLE
     cornerRadius=dp(100f).toFloat()
     setColor(Color.rgb(13,16,20))
+    setStroke(dp(1f),Color.WHITE)
    }
    elevation=dp(5f).toFloat()
   }
@@ -212,7 +213,29 @@ class DrivingService : Service(), LocationListener {
   return FetchResult.Error("Beide servers mislukt; laatste: $lastError",lastServer)
  }
  private fun update() {
-  val result=speed?.let { FineCalculator.calculate(it,limit,roadType,specialZone) } ?: FineCalculator.Result.Unknown
+  val capture=getSharedPreferences("screen_probe",MODE_PRIVATE)
+  val capturedAt=capture.getLong("candidate_at",0L)
+  val captured=capture.getString("candidate","—")?.substringBefore(" ")?.toIntOrNull()
+  val lastFrame=capture.getLong("last_frame",0L)
+  val now=System.currentTimeMillis()
+  val mapsLimit=if(capturedAt>0L && now-capturedAt<5000L &&
+    lastFrame>0L && now-lastFrame<4000L &&
+    capture.getString("status","")=="Schermbeelden ontvangen") captured else null
+  val effectiveLimit=mapsLimit ?: limit
+  // Prefer a matched road classification; otherwise infer a provisional category
+  // from the speed limit. This is only an estimate, not a legal road classification.
+  val estimatedRoadType=roadType ?: when(effectiveLimit) {
+   10,20,30,40,50 -> FineCalculator.RoadType.URBAN
+   60,70,80,90 -> FineCalculator.RoadType.RURAL
+   100,110,120,130 -> null // 100 km/h may be a motorway or non-motorway.
+   else -> null
+  }
+  val result=speed?.let { FineCalculator.calculate(it,effectiveLimit,estimatedRoadType,specialZone) } ?: FineCalculator.Result.Unknown
+  getSharedPreferences("diagnostics",MODE_PRIVATE).edit()
+   .putString("effective_limit",effectiveLimit?.let { "$it km/u" }?:"—")
+   .putString("limit_source",if(mapsLimit!=null) "Google Maps OCR" else if(limit!=null) "Wegenkaart" else "Onbekend")
+   .putString("road_class",estimatedRoadType?.name?:"Onbekend")
+   .apply()
   val amount=when(result) {
    is FineCalculator.Result.Amount -> "€ ${result.euros}"
    is FineCalculator.Result.Warning -> result.label
@@ -223,7 +246,7 @@ class DrivingService : Service(), LocationListener {
   if(prefs.getBoolean("show_speed",false))
    lines.add("GPS: "+(speed?.let { "${it.roundToInt()} km/u" } ?: "—"))
   if(prefs.getBoolean("show_limit",false))
-   lines.add("Max: "+(limit?.let { "$it km/u" } ?: "—"))
+   lines.add("Max: "+(effectiveLimit?.let { "$it km/u" } ?: "—"))
   overlay.text=lines.joinToString("\n")
 
  }
