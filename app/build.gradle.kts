@@ -12,8 +12,8 @@ android {
         applicationId = "nl.euroraptor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.3"
+        versionCode = 14
+        versionName = "1.4"
     }
 
     compileOptions {
@@ -24,4 +24,8 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }
