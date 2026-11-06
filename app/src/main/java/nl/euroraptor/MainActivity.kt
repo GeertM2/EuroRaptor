@@ -14,6 +14,8 @@ import android.os.Looper
 import android.provider.Settings
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
+import android.text.InputType
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.ScrollView
@@ -83,7 +85,7 @@ class MainActivity : Activity() {
    setPadding(px(20),px(18),px(20),px(24))
   }
   val scroller=ScrollView(this).apply {isFillViewport=true;addView(layout)}
-  layout.addView(TextView(this).apply {text="EuroRaptor 2.0";textSize=26f;setPadding(0,0,0,px(12))})
+  layout.addView(TextView(this).apply {text="EuroRaptor 2.1";textSize=26f;setPadding(0,0,0,px(12))})
   layout.addView(TextView(this).apply {
    text="Boetebedrag op Google Maps\n€ 0 = geen boete  ·  € — = onbekend  ·  € ? = geen vast tarief"
    textSize=16f;setPadding(0,0,0,px(14))
@@ -113,6 +115,7 @@ class MainActivity : Activity() {
   layout.addView(Button(this).apply {text="Stop alles";setOnClickListener {
    stopService(Intent(this@MainActivity,ScreenProbeService::class.java))
    stopService(Intent(this@MainActivity,DrivingService::class.java))
+   getSharedPreferences("test_mode",MODE_PRIVATE).edit().putBoolean("enabled",false).apply()
   }})
   val displaySettings=getSharedPreferences("display",MODE_PRIVATE)
   layout.addView(CheckBox(this).apply {
@@ -130,6 +133,66 @@ class MainActivity : Activity() {
    isChecked=displaySettings.getBoolean("show_diagnostics_overlay",false)
    setOnCheckedChangeListener { _,v->displaySettings.edit().putBoolean("show_diagnostics_overlay",v).apply() }
   })
+  val testPrefs=getSharedPreferences("test_mode",MODE_PRIVATE)
+  layout.addView(TextView(this).apply {
+   text="TESTMODUS (stilstaand, zonder Maps)"
+   textSize=17f
+   setPadding(0,px(10),0,px(5))
+  })
+  val testInputs=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL}
+  val testSpeed=EditText(this).apply {
+   hint="GPS km/u"
+   inputType=InputType.TYPE_CLASS_NUMBER
+   setSingleLine(true)
+   setText(testPrefs.getInt("speed",50).toString())
+   layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)
+  }
+  val testLimit=EditText(this).apply {
+   hint="Max km/u"
+   inputType=InputType.TYPE_CLASS_NUMBER
+   setSingleLine(true)
+   setText(testPrefs.getInt("limit",30).toString())
+   layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)
+  }
+  testInputs.addView(testSpeed)
+  testInputs.addView(testLimit)
+  layout.addView(testInputs)
+  val testStatus=TextView(this).apply {textSize=14f}
+  fun updateTestStatus() {
+   val speedValue=testPrefs.getInt("speed",50)
+   val limitValue=testPrefs.getInt("limit",30)
+   val correction=if(speedValue<=100) 3 else kotlin.math.ceil(speedValue*0.03).toInt()
+   val excess=speedValue-correction-limitValue
+   val fine=FineCalculator.calculateWorstCase(speedValue.toDouble(),limitValue)
+   val amount=when(fine) {
+    is FineCalculator.Result.Amount -> "€ ${fine.euros}"
+    is FineCalculator.Result.Warning -> fine.label
+    FineCalculator.Result.Unknown -> "€ —"
+   }
+   testStatus.text="Test ${if(testPrefs.getBoolean("enabled",false)) "AAN" else "UIT"}: $speedValue - $correction = ${speedValue-correction} km/u | +$excess km/u | $amount"
+  }
+  layout.addView(testStatus)
+  layout.addView(Button(this).apply {text="Start testmodus + overlay";setOnClickListener {
+   val testSpeedValue=testSpeed.text.toString().toIntOrNull()
+   val testLimitValue=testLimit.text.toString().toIntOrNull()
+   if(testSpeedValue==null || testSpeedValue !in 0..300 || testLimitValue==null || testLimitValue !in 1..150) {
+    android.widget.Toast.makeText(this@MainActivity,"Vul geldige snelheden in (0–300 en 1–150)",android.widget.Toast.LENGTH_LONG).show()
+    return@setOnClickListener
+   }
+   if(!Settings.canDrawOverlays(this@MainActivity) ||
+     checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
+    android.widget.Toast.makeText(this@MainActivity,"Geef eerst locatie- en overlaytoestemming",android.widget.Toast.LENGTH_LONG).show()
+    return@setOnClickListener
+   }
+   testPrefs.edit().putBoolean("enabled",true).putInt("speed",testSpeedValue).putInt("limit",testLimitValue).apply()
+   startForegroundService(Intent(this@MainActivity,DrivingService::class.java))
+   updateTestStatus()
+  }})
+  layout.addView(Button(this).apply {text="Stop testmodus (terug naar live)";setOnClickListener {
+   testPrefs.edit().putBoolean("enabled",false).apply()
+   updateTestStatus()
+  }})
+  updateTestStatus()
   val details=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;visibility=View.GONE}
   layout.addView(Button(this).apply {text="Diagnostiek en extra opties ▼";setOnClickListener {
    details.visibility=if(details.visibility==View.VISIBLE) View.GONE else View.VISIBLE
