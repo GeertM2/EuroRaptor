@@ -223,11 +223,18 @@ class DrivingService : Service(), LocationListener {
   val mapsLimit=if(capturedAt>0L && now-capturedAt<6000L &&
     lastFrame>0L && now-lastFrame<4000L &&
     capture.getString("status","")=="Schermbeelden ontvangen") captured else null
-  val effectiveLimit=mapsLimit
-  val result=speed?.let { FineCalculator.calculateWorstCase(it,effectiveLimit) } ?: FineCalculator.Result.Unknown
+  val test=getSharedPreferences("test_mode",MODE_PRIVATE)
+  val testing=test.getBoolean("enabled",false)
+  val effectiveLimit=if(testing) test.getInt("limit",30) else mapsLimit
+  val effectiveSpeed=if(testing) test.getInt("speed",50).toDouble() else speed
+  val result=effectiveSpeed?.let { FineCalculator.calculateWorstCase(it,effectiveLimit) } ?: FineCalculator.Result.Unknown
+  val measured=effectiveSpeed?.roundToInt()
+  val correction=measured?.let { if(it<=100) 3 else ceil(it*0.03).toInt() }
+  val corrected=if(measured!=null && correction!=null) measured-correction else null
+  val excess=if(corrected!=null && effectiveLimit!=null) corrected-effectiveLimit else null
   getSharedPreferences("diagnostics",MODE_PRIVATE).edit()
    .putString("effective_limit",effectiveLimit?.let { "$it km/u" }?:"—")
-   .putString("limit_source",if(mapsLimit!=null) "Google Maps OCR" else "Onbekend")
+   .putString("limit_source",if(testing) "TEST handmatig" else if(mapsLimit!=null) "Google Maps OCR" else "Onbekend")
    .putString("road_class","Niet nodig")
    .apply()
   val amount=when(result) {
@@ -236,9 +243,9 @@ class DrivingService : Service(), LocationListener {
    FineCalculator.Result.Unknown -> "€ —"
   }
   val prefs=getSharedPreferences("display",MODE_PRIVATE)
-  val lines=mutableListOf(amount)
+  val lines=mutableListOf(if(testing) "TEST $amount" else amount)
   if(prefs.getBoolean("show_speed",false))
-   lines.add("GPS: "+(speed?.let { "${it.roundToInt()} km/u" } ?: "—"))
+   lines.add("GPS: "+(effectiveSpeed?.let { "${it.roundToInt()} km/u" } ?: "—"))
   if(prefs.getBoolean("show_limit",false))
    lines.add("Max: "+(effectiveLimit?.let { "$it km/u" } ?: "—"))
   if(prefs.getBoolean("show_diagnostics_overlay",false)) {
@@ -247,12 +254,17 @@ class DrivingService : Service(), LocationListener {
    val captureStatus=capture.getString("status","—")
    val source=if(mapsLimit!=null) "Maps" else "?"
    val age=if(capturedAt>0L) "${(now-capturedAt)/1000}s" else "—"
-   lines.add("GPS ${speed?.roundToInt() ?: "—"} | Max ${effectiveLimit ?: "—"} | $source")
-   lines.add("OCR $ocr | $votes")
-   lines.add("Frame ${if(lastFrame>0) "${(now-lastFrame)/1000}s" else "—"} | Limiet $age")
-   lines.add("Worst-case | $captureStatus")
+   lines.add("GPS ${effectiveSpeed?.roundToInt() ?: "—"} | Max ${effectiveLimit ?: "—"} | ${if(testing) "TEST" else source}")
+   lines.add("Correctie ${correction ?: "—"} | Gecorr. ${corrected ?: "—"}")
+   lines.add("Overschrijding ${excess ?: "—"} km/u | $amount")
+   if(!testing) lines.add("OCR $ocr | $votes")
+   if(!testing) lines.add("Frame ${if(lastFrame>0) "${(now-lastFrame)/1000}s" else "—"} | Limiet $age")
+   lines.add(if(testing) "Worst-case | HANDMATIGE TEST" else "Worst-case | $captureStatus")
   }
-  overlay.setTextSize(TypedValue.COMPLEX_UNIT_SP,if(prefs.getBoolean("show_diagnostics_overlay",false)) 15f else 25f)
+  if(testing && !prefs.getBoolean("show_diagnostics_overlay",false)) {
+   lines.add("${measured ?: "—"} - ${correction ?: "—"} = ${corrected ?: "—"} | +${excess ?: "—"} km/u")
+  }
+  overlay.setTextSize(TypedValue.COMPLEX_UNIT_SP,if(prefs.getBoolean("show_diagnostics_overlay",false) || testing) 15f else 25f)
   overlay.text=lines.joinToString("\n")
 
  }
