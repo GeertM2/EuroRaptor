@@ -125,7 +125,7 @@ class ScreenProbeService:Service() {
   if(radiusBest==0) {
    bitmap.recycle();recordObservation(null)
    getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
-    .putString("circle","Niet gevonden (zoekzone links: 40–97% hoogte)")
+    .putString("circle","Niet gevonden (zoekzone links: 30–98,5% hoogte)")
     .putString("ocr_text","—")
     .putString("recognition","Geen rode cirkel met lichte binnenkant").apply()
    scanning=false;return
@@ -135,7 +135,7 @@ class ScreenProbeService:Service() {
   val minX=cxBest-radiusBest;val minY=cyBest-radiusBest
   val maxX=cxBest+radiusBest;val maxY=cyBest+radiusBest
   val dx=maxX-minX;val dy=maxY-minY
-  val inset=(dx*0.22).toInt().coerceAtLeast(2)
+  val inset=(dx*0.10).toInt().coerceAtLeast(1)
   val x=minX+inset;val y=minY+inset
   val cw=(dx-2*inset).coerceAtLeast(1)
   val ch=(dy-2*inset).coerceAtLeast(1)
