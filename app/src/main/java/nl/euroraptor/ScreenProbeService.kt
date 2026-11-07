@@ -117,10 +117,11 @@ class ScreenProbeService:Service() {
   val w=image.width;val h=image.height
   val bitmap=Bitmap.createBitmap(plane.rowStride/plane.pixelStride,h,Bitmap.Config.ARGB_8888)
   bitmap.copyPixelsFromBuffer(plane.buffer)
-  // Search lower-left only, where Google Maps displays the speed-limit badge.
-  val right=(w*0.24).toInt()
-  val top=(h*0.65).toInt()
-  val bottom=(h*0.90).toInt()
+  // Google Maps moves the speed-limit badge vertically as bottom panels change.
+  // Search a broad left-side strip instead of assuming a fixed Y coordinate.
+  val right=(w*0.28).toInt()
+  val top=(h*0.40).toInt()
+  val bottom=(h*0.97).toInt()
   // Evaluate each possible ring separately; other red UI elements no longer
   // enlarge a shared bounding rectangle.
   fun isRed(c:Int)=Color.red(c)>140 && Color.red(c)>Color.green(c)*1.55 &&
@@ -148,7 +149,7 @@ class ScreenProbeService:Service() {
   if(radiusBest==0) {
    bitmap.recycle();recordObservation(null)
    getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
-    .putString("circle","Niet gevonden")
+    .putString("circle","Niet gevonden (zoekzone links: 40–97% hoogte)")
     .putString("ocr_text","—")
     .putString("recognition","Geen rode cirkel met lichte binnenkant").apply()
    scanning=false;return
