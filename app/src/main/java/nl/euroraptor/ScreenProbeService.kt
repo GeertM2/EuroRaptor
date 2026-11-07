@@ -117,35 +117,11 @@ class ScreenProbeService:Service() {
   val w=image.width;val h=image.height
   val bitmap=Bitmap.createBitmap(plane.rowStride/plane.pixelStride,h,Bitmap.Config.ARGB_8888)
   bitmap.copyPixelsFromBuffer(plane.buffer)
-  // Google Maps moves the speed-limit badge vertically as bottom panels change.
-  // Search a broad left-side strip instead of assuming a fixed Y coordinate.
-  val right=(w*0.28).toInt()
-  val top=(h*0.40).toInt()
-  val bottom=(h*0.97).toInt()
-  // Evaluate each possible ring separately; other red UI elements no longer
-  // enlarge a shared bounding rectangle.
-  fun isRed(c:Int)=Color.red(c)>140 && Color.red(c)>Color.green(c)*1.55 &&
-    Color.red(c)>Color.blue(c)*1.4 && Color.green(c)<160
-  fun isWhite(c:Int)=Color.red(c)>155 && Color.green(c)>155 && Color.blue(c)>155
-  var best=0.0;var cxBest=0;var cyBest=0;var radiusBest=0
-  val radii=intArrayOf((w*0.035).toInt(),(w*0.043).toInt(),(w*0.05).toInt(),(w*0.057).toInt())
-  for(r in radii) {
-   val step=(r/4).coerceAtLeast(6)
-   for(cy in top+r until bottom-r step step) for(cx in r until right-r step step) {
-    var ring=0;var white=0
-    for(i in 0 until 32) {
-     val angle=i*Math.PI/16.0
-     val dx=(kotlin.math.cos(angle)*r).toInt()
-     val dy=(kotlin.math.sin(angle)*r).toInt()
-     if(isRed(bitmap.getPixel(cx+dx,cy+dy))) ring++
-     if(isWhite(bitmap.getPixel(cx+(dx*0.60).toInt(),cy+(dy*0.60).toInt()))) white++
-    }
-    val score=ring/32.0*0.8+white/32.0*0.2
-    if(ring>=18 && white>=16 && score>best) {
-     best=score;cxBest=cx;cyBest=cy;radiusBest=r
-    }
-   }
-  }
+  val found=SpeedBadgeDetector.find(w,h) { x,y -> bitmap.getPixel(x,y) }
+  val cxBest=found?.x?:0
+  val cyBest=found?.y?:0
+  val radiusBest=found?.radius?:0
+  val best=found?.score?:0.0
   if(radiusBest==0) {
    bitmap.recycle();recordObservation(null)
    getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
