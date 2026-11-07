@@ -28,6 +28,50 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
       - name: Run automated unit tests
         run: gradle --no-daemon testDebugUnitTest
+      - name: Publish readable test summary
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+          files=glob.glob('app/build/test-results/testDebugUnitTest/TEST-*.xml')
+          groups={}
+          for path in files:
+              root=ET.parse(path).getroot()
+              name=root.attrib.get('name',os.path.basename(path))
+              tests=root.findall('.//testcase')
+              failed=[t for t in tests if t.find('failure') is not None or t.find('error') is not None]
+              skipped=[t for t in tests if t.find('skipped') is not None]
+              groups[name]=(len(tests),failed,skipped)
+          total=sum(v[0] for v in groups.values())
+          failures=sum(len(v[1]) for v in groups.values())
+          skipped=sum(len(v[2]) for v in groups.values())
+          passed=total-failures-skipped
+          lines=['# EuroRaptor – automatische testresultaten','',
+                 f'**{passed} van {total} tests geslaagd** · {failures} mislukt · {skipped} overgeslagen','']
+          if not files:
+              lines+=['⚠️ Geen JUnit-resultaten gevonden. De tests zijn mogelijk niet gestart.','']
+          else:
+              lines+=['| Testgroep | Geslaagd | Totaal | Mislukt |','|---|---:|---:|---:|']
+              for name,(n,bad,skip) in sorted(groups.items()):
+                  lines.append(f'| {name.split(".")[-1]} | {n-len(bad)-len(skip)} | {n} | {len(bad)} |')
+              lines.append('')
+              for name,(n,bad,skip) in sorted(groups.items()):
+                  for test in bad:
+                      lines.append(f'- ❌ {name.split(".")[-1]}.{test.attrib.get("name","?")}')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as out:
+              out.write('\\n'.join(lines)+'\\n')
+          print('\\n'.join(lines))
+          PY
+      - name: Upload detailed test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EuroRaptor-test-results
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: warn
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - name: Upload APK
