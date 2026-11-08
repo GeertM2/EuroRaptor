@@ -4,7 +4,6 @@ import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
-import javax.imageio.ImageIO
 
 /** Runs the real production pixel detector on screenshot PNGs in GitHub Actions.
  * ML Kit OCR itself requires Android instrumentation and is NOT exercised here.
@@ -18,7 +17,7 @@ class SpeedBadgeScreenshotTest {
   assumeTrue("No named screenshot PNG fixtures yet; see tests/screenshots/README.md",named.isNotEmpty())
   val failures=mutableListOf<String>()
   for(file in named) {
-   val img=ImageIO.read(file)
+   val img=PngFixture.read(file)
    if(img==null) {failures.add("${file.name}: cannot decode PNG");continue}
    val found=SpeedBadgeDetector.find(img.width,img.height) { x,y -> img.getRGB(x,y) }
    if(found==null) failures.add("${file.name}: red-ring detector found no sign")
