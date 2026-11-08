@@ -23,13 +23,13 @@ class SpeedBadgeScreenshotTest {
         val requiredLimits = listOf(30, 70, 100, 130)
         val byLimit = requiredLimits.associateWith { limit ->
             val code = limit.toString().padStart(3, '0')
-            val regex = Regex("^limit[_-]?$code(?:[_-].*)?\\.png$", RegexOption.IGNORE_CASE)
+            val regex = Regex("^(?:limit[_-]?$code(?:[_-].*)?|(?:0?${limit})[_-]kmh(?:[_-].*)?)\\.png$", RegexOption.IGNORE_CASE)
             pngs.filter { regex.matches(it.name) }
         }
         val missing = requiredLimits.filter { byLimit.getValue(it).isEmpty() }
         assertTrue(
             "Missing real PNG screenshots for limits: ${missing.joinToString()}. " +
-                "Expected limit_030_*.png, limit_070_*.png, limit_100_*.png, limit_130_*.png " +
+                "Expected limit_030_*.png (or 30_kmh_*.png), 70_kmh_*.png, 100_kmh_*.png, 130_kmh_*.png " +
                 "in tests/screenshots/ (or app/src/test/resources/screenshots/). " +
                 "Found PNGs: ${pngs.map { it.name }}",
             missing.isEmpty()
