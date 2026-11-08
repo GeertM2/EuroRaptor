@@ -38,7 +38,7 @@ class SpeedBadgeScreenshotTest {
         val failures = mutableListOf<String>()
         byLimit.forEach { (limit, files) ->
             files.forEach { file ->
-                val img = PngFixture.read(file)
+                val img = try { PngFixture.read(file) } catch (e: Exception) {\n                    failures.add("${file.name}: PNG decode error: ${e.message}")\n                    null\n                }
                 if (img == null) {
                     failures.add("${file.name}: cannot decode PNG")
                 } else {
