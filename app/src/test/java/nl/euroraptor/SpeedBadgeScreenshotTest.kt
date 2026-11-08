@@ -51,7 +51,6 @@ class SpeedBadgeScreenshotTest {
                 }
             }
         }
-        assertTrue(failures.joinToString("
-"), failures.isEmpty())
+        assertTrue(failures.joinToString(System.lineSeparator()), failures.isEmpty())
     }
 }
