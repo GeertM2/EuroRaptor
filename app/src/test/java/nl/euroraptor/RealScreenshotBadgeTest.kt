@@ -4,7 +4,6 @@ import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
-import javax.imageio.ImageIO
 
 /**
  * Real Google Maps screenshot regression tests.
@@ -32,7 +31,7 @@ class RealScreenshotBadgeTest {
         cases.forEach { (filename, expectedLimit) ->
             val file = File(root, filename)
             assertTrue("Missing screenshot: $filename", file.isFile)
-            val image = ImageIO.read(file)
+            val image = PngFixture.read(file)
             assertNotNull("Unreadable screenshot: $filename", image)
             val badge = SpeedBadgeDetector.find(image.width, image.height) { x, y ->
                 image.getRGB(x, y)
