@@ -135,13 +135,13 @@ class ScreenProbeService:Service() {
   val minX=cxBest-radiusBest;val minY=cyBest-radiusBest
   val maxX=cxBest+radiusBest;val maxY=cyBest+radiusBest
   val dx=maxX-minX;val dy=maxY-minY
-  val inset=(dx*0.10).toInt().coerceAtLeast(1)
+  val inset=(dx*0.16).toInt().coerceAtLeast(1)
   val x=minX+inset;val y=minY+inset
   val cw=(dx-2*inset).coerceAtLeast(1)
   val ch=(dy-2*inset).coerceAtLeast(1)
-  val crop=Bitmap.createBitmap(bitmap,x,y,cw,ch)
+  val crop=Bitmap.createBitmap(bitmap,x.coerceIn(0,bitmap.width-1),y.coerceIn(0,bitmap.height-1),cw.coerceAtMost(bitmap.width-x),ch.coerceAtMost(bitmap.height-y))
   bitmap.recycle()
-  val scaled=Bitmap.createScaledBitmap(crop,cw*4,ch*4,false)
+  val scaled=Bitmap.createScaledBitmap(crop,cw*5,ch*5,true)
   crop.recycle()
   recognizer.process(InputImage.fromBitmap(scaled,0))
    .addOnSuccessListener { result ->
