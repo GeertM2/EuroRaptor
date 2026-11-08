@@ -38,6 +38,7 @@ class SpeedBadgeScreenshotTest {
         val failures = mutableListOf<String>()
         byLimit.forEach { (limit, files) ->
             files.forEach { file ->
+                println("SCREENSHOT CHECK: ${file.name} expected=$limit")
                 val img = try { PngFixture.read(file) } catch (e: Exception) {
                     failures.add("${file.name}: PNG decode error: ${e.message}")
                     null
@@ -51,6 +52,7 @@ class SpeedBadgeScreenshotTest {
                 }
             }
         }
+        failures.forEach { System.err.println("SCREENSHOT FAILURE: $it") }
         assertTrue(failures.joinToString(System.lineSeparator()), failures.isEmpty())
     }
 }
