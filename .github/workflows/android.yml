@@ -26,6 +26,25 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Normalize screenshot fixtures to PNG
+        shell: bash
+        run: |
+          python3 -m pip install --quiet Pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          for path in sorted(Path('tests/screenshots').glob('*.png')):
+              with Image.open(path) as image:
+                  original = image.format
+                  image.load()
+                  if original != 'PNG':
+                      if original != 'JPEG':
+                          raise RuntimeError(f'Unexpected screenshot format: {path}: {original}')
+                      image.convert('RGB').save(path, format='PNG')
+                      print(f'Converted {path.name}: JPEG -> PNG')
+                  else:
+                      print(f'Validated {path.name}: PNG')
+          PY
       - name: Run automated unit tests
         shell: bash
         run: |
