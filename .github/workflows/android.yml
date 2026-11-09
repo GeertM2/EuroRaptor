@@ -63,6 +63,25 @@ jobs:
               for name,(n,bad,skip) in sorted(groups.items()):
                   for test in bad:
                       lines.append(f'- ❌ {name.split(".")[-1]}.{test.attrib.get("name","?")}')
+                      detail=test.find('failure')
+                      if detail is None:
+                          detail=test.find('error')
+                      if detail is not None:
+                          message=(detail.attrib.get('message') or detail.text or '').strip()
+                          if message:
+                              lines.append('')
+                              lines.append('    ' + message[:3000].replace('\\n','\\n    '))
+              for path in files:
+                  root=ET.parse(path).getroot()
+                  if root.attrib.get('name','').endswith('SpeedBadgeScreenshotTest'):
+                      for tag in ('system-out','system-err'):
+                          output=root.findtext(tag)
+                          if output:
+                              lines.append('')
+                              lines.append('### Screenshot diagnostics (' + tag + ')')
+                              lines.append('```')
+                              lines.append(output[-6000:])
+                              lines.append('```')
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as out:
               out.write('\\n'.join(lines)+'\\n')
           print('\\n'.join(lines))
