@@ -26,10 +26,13 @@ class ScreenProbeService:Service() {
  private var display:VirtualDisplay?=null
  private var reader:ImageReader?=null
  private val handler=Handler(Looper.getMainLooper())
+ private val scanThread=HandlerThread("EuroRaptor-ScreenScan",android.os.Process.THREAD_PRIORITY_BACKGROUND).apply { start() }
+ private val scanHandler=Handler(scanThread.looper)
  private var frames=0
  private val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
- private var scanning=false
+ @Volatile private var scanning=false
  private var lastScan=0L
+ private var lastStatusUpdate=0L
  private val observations=ArrayDeque<Pair<Long,Int>>()
  private var confirmedLimit:Int?=null
  private var lastConfirmedAt=0L
@@ -85,7 +88,7 @@ class ScreenProbeService:Service() {
    reader?.setOnImageAvailableListener({ source ->
     source.acquireLatestImage()?.use {
      frames++
-     if(!scanning && System.currentTimeMillis()-lastScan>1800L) {
+     if(!scanning && System.currentTimeMillis()-lastScan>2500L) {
       scanning=true
       lastScan=System.currentTimeMillis()
       try { recognize(it) } catch(e:Exception) {
@@ -93,14 +96,17 @@ class ScreenProbeService:Service() {
        getSharedPreferences("screen_probe",MODE_PRIVATE).edit().putString("recognition","Scan fout: "+e.javaClass.simpleName).apply()
       }
      }
-     getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
+     if(System.currentTimeMillis()-lastStatusUpdate>2500L) {
+      lastStatusUpdate=System.currentTimeMillis()
+      getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
       .putString("status","Schermbeelden ontvangen")
       .putInt("frames",frames)
       .putLong("last_frame",System.currentTimeMillis())
       .putString("size","${it.width} x ${it.height}")
       .apply()
+     }
     }
-   },handler)
+   },scanHandler)
    display=projection?.createVirtualDisplay("EuroRaptor screen diagnostic",width,height,metrics.densityDpi,
      DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,reader?.surface,null,handler)
    getSharedPreferences("screen_probe",MODE_PRIVATE).edit().putString("status","Schermdeling gestart").apply()
@@ -169,6 +175,7 @@ class ScreenProbeService:Service() {
   projection?.unregisterCallback(callback)
   projection?.stop()
   recognizer.close()
+  scanThread.quitSafely()
   getSharedPreferences("screen_probe",MODE_PRIVATE).edit()
    .putString("status","Gestopt").putString("candidate","—")
    .putLong("candidate_at",0L).putString("votes","Schermdeling gestopt").apply()
