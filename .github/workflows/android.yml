@@ -114,6 +114,35 @@ jobs:
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
           if-no-files-found: warn
+      - name: Prepare real screenshot assets for Android OCR tests
+        shell: bash
+        run: |
+          mkdir -p app/src/androidTest/assets/screenshots
+          cp tests/screenshots/*.png app/src/androidTest/assets/screenshots/
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run actual ML Kit OCR tests on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: gradle --no-daemon connectedDebugAndroidTest
+      - name: Upload Android OCR test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EuroRaptor-ocr-test-results
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
       - name: Build debug APK
         shell: bash
         run: |
